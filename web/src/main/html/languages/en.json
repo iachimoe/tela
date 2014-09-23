@@ -1,0 +1,11 @@
+{
+    "indexPageTitle": "Tela",
+    "loginPageTitle": "Tela - login",
+    "welcome": "Welcome,",
+    "login": "Login",
+    "logout": "Logout",
+    "usernameLabel": "Username",
+    "passwordLabel": "Password",
+    "connectionFailedError": "Failed to connect to server",
+    "badCredentialsError": "Invalid username/password"
+}

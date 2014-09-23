@@ -1,0 +1,11 @@
+{
+    "indexPageTitle": "Tela",
+    "loginPageTitle": "Tela - iniciar sesión",
+    "welcome": "Bienvenido(a),",
+    "login": "Iniciar sesión",
+    "logout": "Cerrar sesión",
+    "usernameLabel": "Nombre de usuario",
+    "passwordLabel": "Contraseña",
+    "connectionFailedError": "No se pudo conectar al servidor",
+    "badCredentialsError": "Nombre de usuario o contraseña incorrecto"
+}

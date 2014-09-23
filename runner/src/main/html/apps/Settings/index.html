@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+<script>
+    var connection = null;
+
+    function establishConnection() {
+        connection = new WebSocket('ws://' + window.location.host + '/events');
+
+        connection.onopen = function () {
+            connection.send(JSON.stringify({"action": "getLanguages"}));
+        };
+
+        connection.onclose = function () {
+        };
+
+        connection.onmessage = function (e) {
+            var message = JSON.parse(e.data);
+            if (message["action"] === "setLanguages") {
+                var languages = message["data"]["languages"];
+                var selectedLanguage = message["data"]["selected"];
+                Object.keys(languages).forEach(function (item, i) {
+                    var option = document.createElement("option");
+                    option.value = item;
+                    option.innerHTML = languages[item];
+
+                    if (selectedLanguage === item)
+                    {
+                        option.selected = "selected";
+                    }
+
+                    document.getElementById("languages").appendChild(option);
+                });
+            }
+            else if (message["action"] === "changePasswordSucceeded") {
+                document.getElementById("passwordChangeMessage").innerHTML = "{{changePasswordSucceeded}}"
+            }
+            else if (message["action"] === "changePasswordFailed") {
+                document.getElementById("passwordChangeMessage").innerHTML = "{{changePasswordFailed}}"
+            }
+        }
+    }
+
+    function changePassword() {
+        if (document.getElementById("newPassword").value !== document.getElementById("confirmNewPassword").value)
+        {
+            document.getElementById("passwordChangeMessage").innerHTML = "{{changePasswordFailed}}"
+        }
+        else
+        {
+            var json = {"action": "changePassword", "data": {"oldPassword": document.getElementById("oldPassword").value,
+                "newPassword": document.getElementById("newPassword").value}
+            };
+            connection.send(JSON.stringify(json));
+        }
+        clearChangePasswordFields()
+    }
+
+    function clearChangePasswordFields() {
+        document.getElementById("oldPassword").value = "";
+        document.getElementById("newPassword").value = "";
+        document.getElementById("confirmNewPassword").value = "";
+    }
+
+    function setLanguage(language)
+    {
+        var json = {"action": "setLanguage", "data": language};
+        connection.send(JSON.stringify(json));
+        parent.location.reload()
+    }
+</script>
+<body onLoad="establishConnection()">
+<label for="languages">{{changeLanguage}}</label><select id="languages" onChange="setLanguage(this.options[this.selectedIndex].value)"></select><br /><br />
+
+<span id="passwordChangeMessage"></span><br/>
+<label for="oldPassword">{{oldPasswordLabel}}</label><input type="password" id="oldPassword"/><br/>
+<label for="newPassword">{{newPasswordLabel}}</label><input type="password" id="newPassword"/><br/>
+<label for="confirmNewPassword">{{confirmNewPasswordLabel}}</label><input type="password" id="confirmNewPassword"/><br/>
+<button type="button" onclick="changePassword()">{{changePassword}}</button>
+
+</body>
+</html>

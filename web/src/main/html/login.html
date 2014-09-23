@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>{{loginPageTitle}}</title>
+</head>
+<body>
+{{#connectionFailed}}{{connectionFailedError}}{{/connectionFailed}}
+{{#badCredentials}}{{badCredentialsError}}{{/badCredentials}}
+<br/>
+<form name="loginForm" method="post">
+    <label for="username">{{usernameLabel}}</label><input id="username" name="username" value="{{user}}" /><br/>
+    <label for="password">{{passwordLabel}}</label><input id="password" name="password" type="password"/><br/>
+    <button onclick="document.loginForm.submit()">{{login}}</button>
+</form>
+</body>
+</html>

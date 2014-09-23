@@ -1,0 +1,9 @@
+{
+    "changePassword": "Change Password",
+    "oldPasswordLabel": "Old password",
+    "newPasswordLabel": "New password",
+    "confirmNewPasswordLabel" : "Confirm new",
+    "changePasswordSucceeded" : "Password changed successfully",
+    "changePasswordFailed" : "Failed to change password",
+    "changeLanguage": "Change Language"
+}
