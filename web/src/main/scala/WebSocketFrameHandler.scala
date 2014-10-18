@@ -6,8 +6,8 @@ import org.mashupbots.socko.events.WebSocketFrameEvent
 import play.api.libs.json.Reads._
 import play.api.libs.json._
 import tela.baseinterfaces.Presence
-import tela.web.SessionManager._
 import tela.web.JSONConversions._
+import tela.web.SessionManager._
 
 import scala.concurrent.Await
 
@@ -16,7 +16,7 @@ class WebSocketFrameHandler(private val sessionManager: ActorRef, private val cl
     case wsFrame: WebSocketFrameEvent =>
       getSessionIdFromCookie(wsFrame.initialHttpRequest) match {
         case Some(sessionId) =>
-          implicit val timeout = createTimeout
+          implicit val timeout = ActorTimeout
           val future = sessionManager ? GetSession(sessionId)
           Await.result(future, timeout.duration).asInstanceOf[Option[String]] match {
             case Some(_) =>

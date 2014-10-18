@@ -2,9 +2,9 @@ package tela.web
 
 import java.io.{File, FileReader, StringWriter}
 
-import akka.actor.{ActorLogging, Actor}
+import akka.actor.{Actor, ActorLogging}
 import com.github.mustachejava.DefaultMustacheFactory
-import org.mashupbots.socko.events.{HttpResponseMessage, HttpResponseStatus}
+import org.mashupbots.socko.events.{HttpRequestEvent, HttpResponseMessage, HttpResponseStatus}
 import play.api.libs.json.Json
 
 import scala.collection.JavaConversions._
@@ -17,6 +17,10 @@ abstract class RequestHandlerBase extends Actor with ActorLogging {
     response.status = status
     for ((name, value) <- headers) response.headers.put(name, value)
     response.write(content)
+  }
+
+  protected def sendResponseToUnauthorizedUser(event: HttpRequestEvent): Unit = {
+    sendResponse(event.response, Map(), "", HttpResponseStatus.UNAUTHORIZED)
   }
 
   protected def displayPage(response: HttpResponseMessage, headers: Map[String, String], filename: String, preferredLanguage: String, templateMap: Map[String, String] = Map()): Unit = {

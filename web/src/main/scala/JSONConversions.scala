@@ -1,14 +1,14 @@
 package tela.web
 
 import play.api.libs.json._
-import tela.baseinterfaces.{ContactInfo, Presence}
+import tela.baseinterfaces.ContactInfo
 
 object JSONConversions {
   val ActionKey = "action"
   val DataKey = "data"
 
   // LANGUAGES
-  
+
   case class LanguageInfo(languages: Map[String, String], selected: String)
 
   val SetLanguagesAction = "setLanguages"
@@ -41,7 +41,7 @@ object JSONConversions {
   val SetPresenceAction = "setPresence"
   val GetContactListAction = "getContactList"
   val AddContactAction = "addContact"
-  
+
   case class AddContacts(contacts: List[ContactInfo])
 
   val AddContactsAction = "addContacts"
@@ -50,11 +50,12 @@ object JSONConversions {
     def writes(addContacts: AddContacts) = Json.obj(
       ActionKey -> AddContactsAction,
       DataKey -> Json.arr(addContacts.contacts.map {
-        (info: ContactInfo) => Json.toJsFieldJsValueWrapper(Map(ContactKey -> info.jid, PresenceKey -> info.presence.toString.toLowerCase)) }.toSeq : _*))
+        (info: ContactInfo) => Json.toJsFieldJsValueWrapper(Map(ContactKey -> info.jid, PresenceKey -> info.presence.toString.toLowerCase))
+      }.toSeq: _*))
   }
 
   case class PresenceUpdate(contact: ContactInfo)
-  
+
   val PresenceUpdateAction = "presenceUpdate"
 
   implicit val presenceUpdateWrites = new Writes[PresenceUpdate] {

@@ -14,22 +14,18 @@ class AppHandler(private val appsRootDirectory: String, private val appName: Str
     case event: HttpRequestEvent =>
       getSessionIdFromCookie(event.request) match {
         case Some(sessionId) =>
-          implicit val timeout = createTimeout
+          implicit val timeout = ActorTimeout
           val future = sessionManager ? GetSession(sessionId)
           Await.result(future, timeout.duration).asInstanceOf[Option[UserData]] match {
             case Some(userData) =>
               log.info("User {} requesting app requesting app {}", userData.name, appName)
               handleAppRequest(event, userData.language)
-            case None => responseToUnauthorizedUser(event)
+            case None => sendResponseToUnauthorizedUser(event)
           }
-        case None => responseToUnauthorizedUser(event)
+        case None => sendResponseToUnauthorizedUser(event)
       }
 
       context.stop(self)
-  }
-
-  private def responseToUnauthorizedUser(event: HttpRequestEvent): Unit = {
-    sendResponse(event.response, Map(), "", HttpResponseStatus.UNAUTHORIZED)
   }
 
   private def handleAppRequest(event: HttpRequestEvent, language: String): Unit = {

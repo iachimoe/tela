@@ -1,0 +1,8 @@
+{
+    "nameLabel": "Nombre",
+    "jobTitleLabel": "Trabajo",
+    "emailLabel": "Email",
+    "telephoneLabel": "Teléfono",
+    "descriptionLabel": "Descripción",
+    "updateProfile": "Actualizar perfil"
+}

@@ -26,9 +26,8 @@
             var message = JSON.parse(e.data);
             if (message["action"] === "addContacts") {
                 var contacts = message["data"];
-                contacts.forEach(function (item, i) {
-                    if (getContact(item["contact"]) == null)
-                    {
+                contacts.forEach(function (item) {
+                    if (getContact(item["contact"]) == null) {
                         var container = createContactNode(item["contact"]);
                         document.getElementById("contacts").appendChild(container);
                         changePresenceBubbleForContact(item["contact"], item["presence"]);
@@ -42,8 +41,7 @@
         }
     }
 
-    function changePresenceBubbleForContact(contact, presence)
-    {
+    function changePresenceBubbleForContact(contact, presence) {
         var contactDiv = getContact(contact);
 
         if (contactDiv != null) {
@@ -52,14 +50,11 @@
         }
     }
 
-    function getContact(contact)
-    {
-        for (var i = 0; i < document.getElementById("contacts").childNodes.length; i++)
-        {
+    function getContact(contact) {
+        for (var i = 0; i < document.getElementById("contacts").childNodes.length; i++) {
             var child = document.getElementById("contacts").childNodes[i];
 
-            if (child.nodeType == 1)
-            {
+            if (child.nodeType == 1) {
                 if (child.getAttribute("jid") === contact) {
                     return child;
                 }
@@ -71,6 +66,8 @@
     function createContactNode(item) {
         var container = document.createElement("div");
         container.setAttribute("jid", item);
+        container.setAttribute("draggable", "true");
+        container.setAttribute("ondragstart", "drag(event)");
         container.appendChild(createHtmlElementFromText("<div class='presenceBubble'></div>"));
         container.appendChild(createHtmlElementFromText("<span>&NonBreakingSpace;" + item + "</span>"));
         container.appendChild(createHtmlElementFromText("<br />"));
@@ -78,26 +75,27 @@
         return container;
     }
 
-    function createHtmlElementFromText(code)
-    {
+    function createHtmlElementFromText(code) {
         var div = document.createElement('div');
         div.innerHTML = code;
         return div.firstChild;
     }
 
-    function setPresence(presence)
-    {
+    function setPresence(presence) {
         var json = {"action": "setPresence", "data": presence};
         connection.send(JSON.stringify(json));
     }
 
-    function addContact()
-    {
+    function addContact() {
         if (document.getElementById("addContact").value !== "") {
             var json = {"action": "addContact", "data": document.getElementById("addContact").value};
             connection.send(JSON.stringify(json));
             document.getElementById("addContact").value = "";
         }
+    }
+
+    function drag(ev) {
+        ev.dataTransfer.setData("text", ev.target.attributes["jid"].value);
     }
 </script>
 <body onLoad="establishConnection()">

@@ -2,13 +2,14 @@ package tela.web
 
 import java.util.UUID
 
-import akka.actor.{ActorLogging, ActorRef, Actor}
+import akka.actor.{Actor, ActorLogging, ActorRef}
 import tela.baseinterfaces._
-import tela.web.JSONConversions.{PresenceUpdate, AddContacts, LanguageInfo}
+import tela.web.JSONConversions.{AddContacts, LanguageInfo, PresenceUpdate}
 import tela.web.SessionManager._
 import tela.web.WebSocketDataPusher._
 
 object SessionManager {
+
   case class Login(username: String, password: String, preferredLanguage: String)
 
   case class GetSession(sessionId: String)
@@ -31,13 +32,21 @@ object SessionManager {
 
   case class AddContact(sessionId: String, contact: String)
 
+  case class RetrieveData(sessionId: String, uri: String)
+
+  case class RetrievePublishedData(sessionId: String, user: String, uri: String)
+
+  case class PublishData(sessionId: String, json: String, uri: String)
+
   private def generateRandomString: String = {
     UUID.randomUUID.toString
   }
 }
 
-class SessionManager(private val createConnection: (String, String, XMPPSessionListener) => Either[LoginFailure, XMPPSession],
+class SessionManager(private val createXMPPConnection: (String, String, XMPPSettings, XMPPSessionListener) => Either[LoginFailure, XMPPSession],
+                     private val createDataStoreConnection: (String, XMPPSession) => DataStoreConnection,
                      private val languages: Map[String, String],
+                     private val xmppSettings: XMPPSettings,
                      private val webSocketDataPusher: ActorRef,
                      private val generateSessionId: () => String = generateRandomString _) extends Actor with ActorLogging {
 
@@ -55,6 +64,25 @@ class SessionManager(private val createConnection: (String, String, XMPPSessionL
     case SetLanguage(sessionId, language) => setLanguage(sessionId, language)
     case GetContactList(sessionId) => getContactList(sessionId)
     case AddContact(sessionId, contact) => addContact(sessionId, contact)
+    case PublishData(sessionId, json, uri) => publishData(sessionId, json, uri)
+    case RetrieveData(sessionId, uri) => retrieveData(sessionId, uri)
+    case RetrievePublishedData(sessionId, user, uri) => retrievePublishedData(sessionId, user, uri)
+  }
+
+  private def publishData(sessionId: String, json: String, uri: String): Unit = {
+    log.debug("Publishing data for user with session {} with uri {}", sessionId, uri)
+    sessions(sessionId).dataStoreConnection.insertJSON(json)
+    sessions(sessionId).dataStoreConnection.publish(uri)
+  }
+
+  private def retrieveData(sessionId: String, uri: String): Unit = {
+    log.debug("Requesting data for uri {} for user with session {}", uri, sessionId)
+    sender ! sessions(sessionId).dataStoreConnection.retrieveJSON(uri)
+  }
+
+  private def retrievePublishedData(sessionId: String, user: String, uri: String): Unit = {
+    log.debug("Requesting data for uri {} published by {} for user with session {}", uri, user, sessionId)
+    sender ! sessions(sessionId).dataStoreConnection.retrievePublishedDataAsJSON(user, uri)
   }
 
   def addContact(sessionId: String, contact: String): Unit = {
@@ -101,7 +129,10 @@ class SessionManager(private val createConnection: (String, String, XMPPSessionL
   private def logout(sessionId: String): Unit = {
     val sessionInfo: SessionInfo = sessions(sessionId)
     log.debug("Logging out of session {} for user {}", sessionId, sessionInfo.userData.name)
+
+    //TODO prevent an exception from cutting this process short
     sessionInfo.xmppSession.disconnect()
+    sessionInfo.dataStoreConnection.closeConnection()
     webSocketDataPusher ! CloseSockets(sessionInfo.webSockets)
     sessions -= sessionId
   }
@@ -119,22 +150,22 @@ class SessionManager(private val createConnection: (String, String, XMPPSessionL
   private def attemptLogin(username: String, password: String, preferredLanguage: String): Unit = {
     log.debug("Received login request for user {} with language {}", username, preferredLanguage)
     val listener: SessionListener = new SessionListener
-    val connectionResult: Either[LoginFailure, String] = createConnection(username, password, listener).right.map(createNewSession(_, username, preferredLanguage))
+    val connectionResult: Either[LoginFailure, String] = createXMPPConnection(username, password, xmppSettings, listener).right.map(
+      (session: XMPPSession) => createNewSession(session, createDataStoreConnection(username, session), username, preferredLanguage))
+
     if (connectionResult.isRight) {
       listener.sessionId = connectionResult.right.get
     }
     sender ! connectionResult
   }
 
-  private def createNewSession(session: XMPPSession, username: String, preferredLanguage: String): String =
-  {
+  private def createNewSession(session: XMPPSession, dataStoreConnection: DataStoreConnection, username: String, preferredLanguage: String): String = {
     val id = generateSessionId()
-    sessions += (id -> new SessionInfo(session, new UserData(username, preferredLanguage)))
+    sessions += (id -> new SessionInfo(session, dataStoreConnection, new UserData(username, preferredLanguage)))
     id
   }
 
-  private class SessionListener extends XMPPSessionListener
-  {
+  private class SessionListener extends XMPPSessionListener {
     var sessionId: String = null
 
     override def contactsAdded(contacts: List[ContactInfo]): Unit = {
@@ -147,4 +178,5 @@ class SessionManager(private val createConnection: (String, String, XMPPSessionL
       webSocketDataPusher ! SendPresenceUpdate(PresenceUpdate(contact), sessions(sessionId).webSockets)
     }
   }
+
 }

@@ -1,9 +1,8 @@
 package tela.web
 
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.ActorRef
 import akka.testkit.TestActor.{KeepRunning, NoAutoPilot}
-import akka.testkit.{TestActor, TestActorRef, TestProbe}
-import io.netty.channel.ChannelHandlerContext
+import akka.testkit.{TestActor, TestActorRef}
 import io.netty.handler.codec.http._
 import org.junit.Assert._
 import org.junit.{Before, Test}
@@ -177,8 +176,7 @@ class MainPageHandlerTest extends SockoHandlerTestBase {
     assertCookie(createCookie(SessionIdCookieName, TestSessionId, MainPageHandler.CookieExpiresNow), event)
   }
 
-  @Test def alternativeLanguage(): Unit =
-  {
+  @Test def alternativeLanguage(): Unit = {
     initializeTestActor()
 
     val event: HttpRequestEvent = createHttpRequestEvent(HttpMethod.GET, MainPageHandler.WebAppRoot, Map(HttpHeaders.Names.ACCEPT_LANGUAGE -> "es-ES,es;q=0.8,en;q=0.6"))
@@ -188,8 +186,7 @@ class MainPageHandlerTest extends SockoHandlerTestBase {
     assertResponseContent(event.response, MainPageHandler.LoginPage, ContentFolder, getMappingsForLanguage(ContentFolder, "es"))
   }
 
-  @Test def unknownLanguage(): Unit =
-  {
+  @Test def unknownLanguage(): Unit = {
     initializeTestActor()
 
     val event: HttpRequestEvent = createHttpRequestEvent(HttpMethod.GET, MainPageHandler.WebAppRoot, Map(HttpHeaders.Names.ACCEPT_LANGUAGE -> "XX;q=0.8,en;q=0.6"))
@@ -199,8 +196,7 @@ class MainPageHandlerTest extends SockoHandlerTestBase {
     assertResponseContent(event.response, MainPageHandler.LoginPage, ContentFolder, getMappingsForLanguage(ContentFolder, DefaultLanguage))
   }
 
-  @Test def preferredLanguageIsEstablishedFromSessionData(): Unit =
-  {
+  @Test def preferredLanguageIsEstablishedFromSessionData(): Unit = {
     initializeTestActor()
 
     sessionManagerProbe.setAutoPilot(new TestActor.AutoPilot {
@@ -229,18 +225,16 @@ class MainPageHandlerTest extends SockoHandlerTestBase {
     assertResponseContent(event.response, IndexPage, ContentFolder, getMappingsForLanguage(ContentFolder, "es"), Map(MainPageHandler.UserTemplateKey -> TestUsername))
   }
 
-  private def initializeTestActor(): Unit =
-  {
+  private def initializeTestActor(): Unit = {
     handler = TestActorRef(new MainPageHandler(ContentFolder, sessionManagerProbe.ref))
   }
 
-  private def assertCookie(expected: Cookie, event: HttpRequestEvent): Unit =
-  {
+  private def assertCookie(expected: Cookie, event: HttpRequestEvent): Unit = {
     val cookies: Array[Cookie] = decodeCookie(event.response.headers.get(HttpHeaders.Names.SET_COOKIE).get).toArray
     assertEquals(1, cookies.length)
     assertEquals(expected.getName, cookies(0).getName)
     assertEquals(expected.getValue, cookies(0).getValue)
-    assertTrue((expected.getMaxAge == cookies(0).getMaxAge) || (expected.getMaxAge+1 == cookies(0).getMaxAge)) //hack to work around strange(?) behaviour of CookieDecoder
+    assertTrue((expected.getMaxAge == cookies(0).getMaxAge) || (expected.getMaxAge + 1 == cookies(0).getMaxAge)) //hack to work around strange(?) behaviour of CookieDecoder
     assertEquals(expected, cookies(0)) //equals on DefaultCookie neglects to test a lot of things, but let's call it for good measure
   }
 }

@@ -1,12 +1,8 @@
-name := "xmpp"
+name := "datastore"
 
-resolvers += "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
+libraryDependencies += "org.openrdf.sesame" % "sesame-runtime" % "2.7.13"
 
-libraryDependencies += "org.igniterealtime.smack" % "smack-extensions" % "4.1.0-alpha4-SNAPSHOT"
-
-libraryDependencies += "org.igniterealtime.smack" % "smack-tcp" % "4.1.0-alpha4-SNAPSHOT"
-
-libraryDependencies += "org.igniterealtime.smack" % "smack-java7" % "4.1.0-alpha4-SNAPSHOT"
+libraryDependencies += "com.github.jsonld-java" % "jsonld-java-sesame" % "0.5.0"
 
 libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "latest.integration"
 

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<script>
+    function allowDrop(event) {
+        event.preventDefault();
+    }
+
+    function drop(event) {
+        event.preventDefault();
+        downloadProfileInfo(event.dataTransfer.getData("text"));
+    }
+
+    function downloadOwnProfile() {
+        downloadProfileInfo(null);
+    }
+
+    function downloadProfileInfo(user) {
+        var client = new XMLHttpRequest();
+        client.open("GET", getUrlForProfileInfo(user));
+
+        var received = 0;
+
+        client.onreadystatechange = function () {
+            if (client.readyState == 4 && received == 0) {
+                received++;
+                populateUserInfo(JSON.parse(client.responseText)[0]);
+            }
+        };
+        client.send();
+    }
+
+    function populateUserInfo(info) {
+        var fields = ["name", "jobTitle", "email", "telephone", "description"];
+
+        for (var i = 0; i < fields.length; i++) {
+            populateField(fields[i], info);
+        }
+    }
+
+    function populateField(field, data) {
+        var SCHEMA_ROOT = "http://schema.org/";
+        var JSON_LD_VALUE = "@value";
+
+        if (data != null && data[SCHEMA_ROOT + field]) {
+            document.getElementById(field).innerHTML = data[SCHEMA_ROOT + field][0][JSON_LD_VALUE];
+        }
+        else {
+            document.getElementById(field).innerHTML = "";
+        }
+    }
+
+    function getUrlForProfileInfo(user) {
+        var PROFILE_URN = "urn:tela:personalDetails";
+        var url = "/data?uri=" + encodeURIComponent(PROFILE_URN);
+        if (user != null) {
+            url += "&publisher=" + encodeURIComponent(user);
+        }
+        return url;
+    }
+</script>
+<body ondrop="drop(event)" ondragover="allowDrop(event)" onload="downloadOwnProfile()">
+{{nameLabel}} <span id="name"></span><br/>
+{{jobTitleLabel}} <span id="jobTitle"></span><br/>
+{{emailLabel}} <span id="email"></span><br/>
+{{telephoneLabel}} <span id="telephone"></span><br/>
+{{descriptionLabel}} <span id="description"></span><br/>
+</body>
+</html>

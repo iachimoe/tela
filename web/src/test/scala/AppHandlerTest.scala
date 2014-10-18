@@ -2,7 +2,7 @@ package tela.web
 
 import akka.actor.ActorRef
 import akka.testkit.TestActor.NoAutoPilot
-import akka.testkit.{TestActor, TestActorRef, TestProbe}
+import akka.testkit.{TestActor, TestActorRef}
 import io.netty.handler.codec.http.{ClientCookieEncoder, HttpHeaders, HttpMethod}
 import org.junit.Assert._
 import org.junit.{Before, Test}

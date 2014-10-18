@@ -3,15 +3,27 @@
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
     <title>{{indexPageTitle}}</title>
+
+    <script>
+        function setFrameHeightToFitContent(frame) {
+            frame.style.height = frame.contentWindow.document.body.scrollHeight + 'px';
+        }
+    </script>
 </head>
 <body>
-<div style="float: left">{{welcome}} {{user}}</div><div style="float: right"><a href="?logout">{{logout}}</a></div>
+<div style="float: left">{{welcome}} {{user}}</div>
+<div style="float: right"><a href="?logout">{{logout}}</a></div>
 
 <br/><br/>
 
-<iframe src="apps/Settings/index.html" style="float:left"></iframe>
+<iframe src="apps/DisplayProfile/index.html"></iframe>
 
-<iframe src="apps/ContactList/index.html" style="float:right;width:35%"></iframe><br /><br />
+<iframe src="apps/EditProfile/index.html"></iframe>
+
+<div style="float:right;width:35%">
+    <iframe src="apps/Settings/index.html" style="width:100%" onload="setFrameHeightToFitContent(this)"></iframe>
+    <iframe src="apps/ContactList/index.html" style="width:100%"></iframe>
+</div>
 
 </body>
 </html>

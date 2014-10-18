@@ -2,9 +2,11 @@ package tela.xmpp
 
 import org.jivesoftware.smack.SmackException.ConnectionException
 import org.jivesoftware.smack._
-import org.jivesoftware.smack.packet.{IQ, Presence, Registration, RosterPacket}
-import org.jivesoftware.smack.sasl.SASLMechanism.SASLFailure
+import org.jivesoftware.smack.filter.PacketIDFilter
+import org.jivesoftware.smack.packet.{IQ, Presence, RosterPacket}
+import org.jivesoftware.smack.sasl.packet.SaslStreamElements.SASLFailure
 import org.jivesoftware.smack.sasl.{SASLError, SASLErrorException}
+import org.jivesoftware.smackx.iqregister.packet.Registration
 import org.junit.Assert._
 import org.junit.{Before, Test}
 import org.mockito.Matchers._
@@ -12,7 +14,7 @@ import org.mockito.Mockito._
 import org.mockito.{ArgumentCaptor, ArgumentMatcher}
 import org.scalatest.junit.AssertionsForJUnit
 import org.scalatest.mock.MockitoSugar
-import tela.baseinterfaces.{XMPPSession, ContactInfo, LoginFailure, XMPPSessionListener}
+import tela.baseinterfaces._
 
 import scala.collection.JavaConversions._
 
@@ -27,12 +29,12 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
   private val TestBareJid = TestUsername + "@" + TestDomain
   private val TestFullJid = TestBareJid + "/" + TestResource
 
-  private var connection: XMPPConnection = null
+  private var connection: AbstractXMPPConnection = null
   private var roster: Roster = null
   private var sessionListener: XMPPSessionListener = null
 
   @Before def initialize(): Unit = {
-    connection = mock[XMPPConnection]
+    connection = mock[AbstractXMPPConnection]
     sessionListener = mock[XMPPSessionListener]
     roster = mock[Roster]
     when(connection.getRoster).thenReturn(roster)
@@ -85,22 +87,21 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
     val session = connectToServerAndGetSession
     when(connection.getUser).thenReturn(TestFullJid)
 
-    val changePasswordConnection = mock[XMPPConnection]
+    val changePasswordConnection = mock[AbstractXMPPConnection]
     when(changePasswordConnection.getRoster).thenReturn(roster)
     when(changePasswordConnection.getUser).thenReturn(TestFullJid)
 
-    val expectedRegistrationPacket: Registration = new Registration
-    expectedRegistrationPacket.setType(IQ.Type.SET)
-    expectedRegistrationPacket.setAttributes(scala.collection.JavaConversions.mapAsJavaMap(Map(SmackUsernameKey -> TestUsername, SmackPasswordKey -> "newPassword")))
+    val expectedRegistrationPacket: Registration = new Registration(scala.collection.JavaConversions.mapAsJavaMap(Map(SmackUsernameKey -> TestUsername, SmackPasswordKey -> "newPassword")))
+    expectedRegistrationPacket.setType(IQ.Type.set)
 
     val packetCollector = mock[PacketCollector]
-    when(changePasswordConnection.createPacketCollectorAndSend(argThat(new RegistrationMatcher(expectedRegistrationPacket)))).thenReturn(packetCollector)
+    when(changePasswordConnection.createPacketCollectorAndSend(isA(classOf[PacketIDFilter]), argThat(new RegistrationMatcher(expectedRegistrationPacket)))).thenReturn(packetCollector)
 
     assertTrue(session.asInstanceOf[SmackXMPPSession].changePassword(TestPassword, "newPassword", changePasswordConnection))
 
     verify(changePasswordConnection).connect()
     verify(changePasswordConnection).login(TestUsername, TestPassword, SmackXMPPSession.ChangePasswordResource)
-    verify(changePasswordConnection).createPacketCollectorAndSend(argThat(new RegistrationMatcher(expectedRegistrationPacket)))
+    verify(changePasswordConnection).createPacketCollectorAndSend(isA(classOf[PacketIDFilter]), argThat(new RegistrationMatcher(expectedRegistrationPacket)))
     verify(changePasswordConnection).disconnect()
   }
 
@@ -108,7 +109,7 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
     val session = connectToServerAndGetSession
     when(connection.getUser).thenReturn(TestFullJid)
 
-    val changePasswordConnection = mock[XMPPConnection]
+    val changePasswordConnection = mock[AbstractXMPPConnection]
     when(changePasswordConnection.getRoster).thenReturn(roster)
     when(changePasswordConnection.login(TestUsername, "wrongPassword", SmackXMPPSession.ChangePasswordResource)).thenThrow(new SASLErrorException("", new SASLFailure(SASLError.not_authorized.toString)))
 
@@ -118,7 +119,7 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
 
   @Test def changePassword_invalidNewPassword(): Unit = {
     val session = connectToServerAndGetSession
-    val changePasswordConnection = mock[XMPPConnection]
+    val changePasswordConnection = mock[AbstractXMPPConnection]
     assertFalse(session.asInstanceOf[SmackXMPPSession].changePassword(TestPassword, "", changePasswordConnection))
     verify(changePasswordConnection).disconnect()
   }
@@ -188,7 +189,7 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   private def connectToServer: Either[LoginFailure, XMPPSession] = {
-    SmackXMPPSession.connectToServer(TestUsername, TestPassword, connection, sessionListener)
+    SmackXMPPSession.connectToServer(TestUsername, TestPassword, connection, XMPPSettings("localhost", 5222, TestDomain, "disabled"), sessionListener)
   }
 
   private def connectToServerAndGetSession: XMPPSession = {

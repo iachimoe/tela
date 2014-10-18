@@ -1,12 +1,18 @@
 package tela.runner
 
-import akka.actor.{ActorRef, ActorSystem, Props}
-import com.typesafe.config.ConfigFactory
+import java.io.File
+
+import akka.actor._
+import com.typesafe.config.{Config, ConfigFactory}
+import org.jivesoftware.smack.SmackConfiguration
 import org.mashupbots.socko.events.{HttpResponseStatus, SockoEvent}
+import org.mashupbots.socko.infrastructure.ConfigUtil
 import org.mashupbots.socko.routes._
-import org.mashupbots.socko.webserver.{WebLogConfig, WebServer, WebServerConfig}
+import org.mashupbots.socko.webserver.{WebServer, WebServerConfig}
 import play.api.libs.json.Json
-import tela.web.SessionManager.{UnregisterWebSocket, RegisterWebSocket}
+import tela.baseinterfaces.{DataStoreConnection, XMPPSession, XMPPSettings}
+import tela.datastore.DataStoreConnectionImpl
+import tela.web.SessionManager.{RegisterWebSocket, UnregisterWebSocket}
 import tela.web._
 import tela.xmpp.SmackXMPPSession
 
@@ -16,6 +22,11 @@ object Tela {
   private val AppRoot = "runner/src/main/html"
   private val LoginPageRoot = "web/src/main/html"
 
+  private val ConfigFileName = "tela.conf"
+  private val WebServerConfigKey = "web-server-config"
+  private val XMPPConfigKey = "xmpp-config"
+  private val DataStoreConfigKey = "data-store-config"
+
   private var webServer: WebServer = null
   private var sessionManager: ActorRef = null
 
@@ -24,9 +35,20 @@ object Tela {
 
     val webSocketFrameHandler = actorSystem.actorOf(Props(new WebSocketDataPusher(writeTextToSockets, closeSockets)))
 
-    sessionManager = actorSystem.actorOf(Props(new SessionManager(SmackXMPPSession.connectToServer, getSupportedLanguages, webSocketFrameHandler)))
+    val xmppSettings = loadXMPPSettings(actorSystem)
+
+    sessionManager = actorSystem.actorOf(Props(new SessionManager(
+      SmackXMPPSession.connectToServer,
+      createDataStoreConnection(loadDataStoreLocation(actorSystem)),
+      getSupportedLanguages,
+      xmppSettings,
+      webSocketFrameHandler)))
 
     startWebServer(actorSystem, configureWebServerRoutes(actorSystem))
+  }
+
+  private def createDataStoreConnection(dataStoreLocation: String): (String, XMPPSession) => DataStoreConnection = {
+    (user: String, xmppSession: XMPPSession) => DataStoreConnectionImpl.getDataStore(dataStoreLocation, user, xmppSession)
   }
 
   private def closeWebSocket(webSocket: String): Unit = {
@@ -57,6 +79,7 @@ object Tela {
     Routes({
       case HttpRequest(request) => request match {
         case Path("/") => actorSystem.actorOf(Props(new MainPageHandler(LoginPageRoot, sessionManager))) ! request
+        case Path("/data") => actorSystem.actorOf(Props(new DataHandler(sessionManager))) ! request
         case PathSegments("apps" :: relativePath :: theRest) => actorSystem.actorOf(Props(new AppHandler(AppRoot + "/apps", relativePath, sessionManager))) ! request
         case _ => request.response.write(HttpResponseStatus.NOT_FOUND)
       }
@@ -73,17 +96,17 @@ object Tela {
   }
 
   private def createActorSystem: ActorSystem = {
-    val akkaConfig = """
-      akka {
-        event-handlers = ["akka.event.slf4j.Slf4jEventHandler"]
-        loggers = ["akka.event.slf4j.Slf4jLogger"]
-      }"""
-
-    ActorSystem("ActorSystem", ConfigFactory.parseString(akkaConfig))
+    ActorSystem("ActorSystem", ConfigFactory.parseFile(new File(ConfigFileName)))
   }
 
   private def startWebServer(actorSystem: ActorSystem, routes: PartialFunction[SockoEvent, Unit]) {
-    webServer = new WebServer(WebServerConfig(hostname = "0.0.0.0", webLog = Some(WebLogConfig())), routes, actorSystem)
+    object SockoServerConfig extends ExtensionId[WebServerConfig] with ExtensionIdProvider {
+      override def lookup() = SockoServerConfig
+
+      override def createExtension(system: ExtendedActorSystem) = new WebServerConfig(system.settings.config, WebServerConfigKey)
+    }
+
+    webServer = new WebServer(SockoServerConfig(actorSystem), routes, actorSystem)
     webServer.start()
 
     Runtime.getRuntime.addShutdownHook(new Thread {
@@ -91,5 +114,48 @@ object Tela {
         webServer.stop()
       }
     })
+  }
+
+  private def loadDataStoreLocation(actorSystem: ActorSystem): String = {
+    class DataStoreSettings(val rootDirectory: String) extends Extension {
+      def this(config: Config, prefix: String) = this(
+        ConfigUtil.getString(config, DataStoreConfigKey + ".root-directory", null)
+      )
+    }
+
+    object DataStoreConfig extends ExtensionId[DataStoreSettings] with ExtensionIdProvider {
+      override def lookup() = DataStoreConfig
+
+      override def createExtension(system: ExtendedActorSystem) = new DataStoreSettings(system.settings.config, WebServerConfigKey)
+    }
+
+    DataStoreConfig(actorSystem).rootDirectory
+  }
+
+  private def loadXMPPSettings(actorSystem: ActorSystem): XMPPSettings = {
+    class AkkaXMPPSettings(val hostname: String, val port: Int, val domain: String, val securityMode: String, val debug: Boolean) extends Extension {
+      def this(config: Config, prefix: String) = this(
+        ConfigUtil.getString(config, XMPPConfigKey + ".hostname", null),
+        ConfigUtil.getInt(config, XMPPConfigKey + ".port", 5222),
+        ConfigUtil.getString(config, XMPPConfigKey + ".domain", null),
+        ConfigUtil.getString(config, XMPPConfigKey + ".security-mode", "disabled"),
+        ConfigUtil.getBoolean(config, XMPPConfigKey + ".debug", false)
+      )
+    }
+
+    object XMPPConfig extends ExtensionId[AkkaXMPPSettings] with ExtensionIdProvider {
+      override def lookup() = XMPPConfig
+
+      override def createExtension(system: ExtendedActorSystem) = new AkkaXMPPSettings(system.settings.config, WebServerConfigKey)
+    }
+
+    val akkaSettings = XMPPConfig(actorSystem)
+
+    //TODO: This method shouldn't have a side effect...
+    if (akkaSettings.debug) {
+      SmackConfiguration.DEBUG_ENABLED = true
+    }
+
+    XMPPSettings(akkaSettings.hostname, akkaSettings.port, akkaSettings.domain, akkaSettings.securityMode)
   }
 }

@@ -5,8 +5,8 @@ import play.api.libs.json.Json
 import tela.web.JSONConversions._
 import tela.web.WebSocketDataPusher._
 
-object WebSocketDataPusher
-{
+object WebSocketDataPusher {
+
   case class CloseSockets(ids: Set[String])
 
   case class SendLanguages(languages: LanguageInfo, ids: Set[String])
@@ -16,10 +16,11 @@ object WebSocketDataPusher
   case class SendContactListInfo(contacts: AddContacts, ids: Set[String])
 
   case class SendPresenceUpdate(update: PresenceUpdate, ids: Set[String])
+
 }
 
 class WebSocketDataPusher(sendInformationToWebSockets: (String, Iterable[String]) => Unit,
-                          closeWebSockets: (Iterable[String]) =>  Unit) extends Actor {
+                          closeWebSockets: (Iterable[String]) => Unit) extends Actor {
   override def receive: Receive = {
     case CloseSockets(ids) => closeWebSockets(ids)
     case SendLanguages(languages, ids) => sendInformationToWebSockets(Json.stringify(Json.toJson(languages)), ids)

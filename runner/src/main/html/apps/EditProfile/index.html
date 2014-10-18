@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<script>
+    var JSON_LD_ID = "@id";
+    var JSON_LD_TYPE = "@type";
+    var JSON_LD_VALUE = "@value";
+    var SCHEMA_ROOT = "http://schema.org/";
+
+    var PROFILE_URN = "urn:tela:personalDetails";
+    var NAME = SCHEMA_ROOT + "name";
+    var JOB_TITLE = SCHEMA_ROOT + "jobTitle";
+    var EMAIL = SCHEMA_ROOT + "email";
+    var TELEPHONE = SCHEMA_ROOT + "telephone";
+    var DESCRIPTION = SCHEMA_ROOT + "description";
+
+    function updateProfile() {
+        var client = new XMLHttpRequest();
+        client.open("PUT", "/data?uriToPublish=" + encodeURIComponent(PROFILE_URN));
+        client.setRequestHeader("Content-Type", "application/ld+json");
+
+        var json = {};
+        json[JSON_LD_ID] = PROFILE_URN;
+        json[JSON_LD_TYPE] = [SCHEMA_ROOT + "Person"];
+        json[NAME] = createValue(document.getElementById("name").value);
+        json[JOB_TITLE] = createValue(document.getElementById("jobTitle").value);
+        json[EMAIL] = createValue(document.getElementById("email").value);
+        json[TELEPHONE] = createValue(document.getElementById("telephone").value);
+        json[DESCRIPTION] = createValue(document.getElementById("description").value);
+
+        client.send(JSON.stringify([json]));
+    }
+
+    function createValue(value) {
+        var result = {};
+        result[JSON_LD_VALUE] = value;
+        return [result];
+    }
+</script>
+<body>
+<label for="name">{{nameLabel}}</label><input id="name"/><br/>
+<label for="jobTitle">{{jobTitleLabel}}</label><input id="jobTitle"/><br/>
+<label for="email">{{emailLabel}}</label><input id="email"/><br/>
+<label for="telephone">{{telephoneLabel}}</label><input id="telephone"/><br/>
+<label for="description">{{descriptionLabel}}</label><input id="description"/><br/>
+<button onclick="updateProfile()">{{updateProfile}}</button>
+</body>
+</html>

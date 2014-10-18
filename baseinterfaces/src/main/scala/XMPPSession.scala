@@ -1,23 +1,31 @@
 package tela.baseinterfaces
 
+case class XMPPSettings(hostname: String, port: Int, domain: String, securityMode: String)
+
 sealed trait LoginFailure
 
-object LoginFailure
-{
+object LoginFailure {
+
   case object InvalidCredentials extends LoginFailure
+
   case object ConnectionFailure extends LoginFailure
+
 }
 
 sealed abstract class Presence
 
-object Presence
-{
+object Presence {
+
   case object Available extends Presence
+
   case object Away extends Presence
+
   case object DoNotDisturb extends Presence
+
   case object Unknown extends Presence
 
   private val values: List[Presence] = List[Presence](Available, Away, DoNotDisturb, Unknown)
+
   def getFromString(text: String) = values.find(_.toString.equalsIgnoreCase(text)).get
 }
 
@@ -40,5 +48,9 @@ trait XMPPSession {
 
   def getContactList(): Unit
 
-  def addContact(address: String)
+  def addContact(address: String): Unit
+
+  def publish(node: String, content: String): Unit
+
+  def getPublishedData(user: String, node: String): String
 }

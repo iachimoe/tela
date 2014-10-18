@@ -2,8 +2,8 @@
     "changePassword": "Cambiar contraseña",
     "oldPasswordLabel": "Contraseña vieja",
     "newPasswordLabel": "Contraseña nueva",
-    "confirmNewPasswordLabel" : "Confirmar nueva",
-    "changePasswordSucceeded" : "Contraseña cambiada",
-    "changePasswordFailed" : "No se puso cambiar la contraseña",
+    "confirmNewPasswordLabel": "Confirmar nueva",
+    "changePasswordSucceeded": "Contraseña cambiada",
+    "changePasswordFailed": "No se puso cambiar la contraseña",
     "changeLanguage": "Cambiar idioma"
 }

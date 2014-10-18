@@ -1,15 +1,15 @@
 package tela.web
 
-import java.io.{StringWriter, FileReader}
+import java.io.{FileReader, StringWriter}
 
-import akka.actor.{ActorSystem, ActorRef}
+import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.TestProbe
 import com.github.mustachejava.DefaultMustacheFactory
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http._
 import org.junit.Assert._
-import org.mashupbots.socko.events.{HttpResponseMessage, HttpEventConfig, HttpRequestEvent}
+import org.mashupbots.socko.events.{HttpEventConfig, HttpRequestEvent, HttpResponseMessage}
 import org.mockito.ArgumentMatcher
 import org.mockito.Matchers._
 import org.mockito.Mockito._
@@ -38,7 +38,7 @@ class SockoHandlerTestBase extends AssertionsForJUnit with MockitoSugar {
     sessionManagerProbe = TestProbe()
   }
 
-  protected def createHttpRequestEvent(httpMethod: HttpMethod, requestPath:String, headers: Map[String, String] = Map(), content: String = ""): HttpRequestEvent = {
+  protected def createHttpRequestEvent(httpMethod: HttpMethod, requestPath: String, headers: Map[String, String] = Map(), content: String = ""): HttpRequestEvent = {
     val httpRequest: DefaultFullHttpRequest = createHttpRequest(httpMethod, requestPath, headers, content)
     new HttpRequestEvent(channelHandlerContext, httpRequest, new HttpEventConfig(TestHostname, 0, 0, List[String](), None))
   }
@@ -68,7 +68,7 @@ class SockoHandlerTestBase extends AssertionsForJUnit with MockitoSugar {
     assertEquals(TextHtmlContentType, response.contentType.get)
   }
 
-  protected def getMappingsForLanguage(contentFolder:String, lang: String): Map[String, String] = {
+  protected def getMappingsForLanguage(contentFolder: String, lang: String): Map[String, String] = {
     Json.parse(Source.fromFile(contentFolder + "/" + LanguagesFolder + "/" + lang + LanguageFileExtension).mkString).as[Map[String, String]]
   }
 
@@ -85,4 +85,5 @@ class SockoHandlerTestBase extends AssertionsForJUnit with MockitoSugar {
       }
     }
   }
+
 }

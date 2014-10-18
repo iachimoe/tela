@@ -2,10 +2,10 @@ package tela.web
 
 import java.util.Date
 
-import akka.actor.{ActorRef, ActorSystem}
+import akka.actor.ActorRef
 import akka.testkit.TestActor.{AutoPilot, KeepRunning, NoAutoPilot}
-import akka.testkit.{TestActor, TestActorRef, TestProbe}
-import io.netty.channel.{Channel, ChannelHandlerContext}
+import akka.testkit.{TestActor, TestActorRef}
+import io.netty.channel.Channel
 import io.netty.handler.codec.http._
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame
 import io.netty.util.DefaultAttributeMap

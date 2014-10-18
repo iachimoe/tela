@@ -66,7 +66,7 @@ class MainPageHandler(private val documentRoot: String, private val sessionManag
       Map(UserTemplateKey -> username, LoginFailureReasons(failureReason) -> true.toString))
   }
 
-  private def displayLoginScreen(event: HttpRequestEvent): Unit =  {
+  private def displayLoginScreen(event: HttpRequestEvent): Unit = {
     displayPage(event.response, Map(), LoginPage, getLanguageFromRequestHeader(event.request))
   }
 
@@ -94,7 +94,7 @@ class MainPageHandler(private val documentRoot: String, private val sessionManag
   }
 
   private def attemptLogin(username: String, password: String, preferredLanguage: String): Either[LoginFailure, String] = {
-    implicit val timeout = createTimeout
+    implicit val timeout = ActorTimeout
     val future = sessionManager ? Login(username, password, preferredLanguage)
     Await.result(future, timeout.duration).asInstanceOf[Either[LoginFailure, String]]
   }
@@ -110,7 +110,7 @@ class MainPageHandler(private val documentRoot: String, private val sessionManag
   }
 
   private def getUserFromCookie(sessionId: String): Option[(String, UserData)] = {
-    implicit val timeout = createTimeout
+    implicit val timeout = ActorTimeout
     val future = sessionManager ? GetSession(sessionId)
     val username = Await.result(future, timeout.duration).asInstanceOf[Option[UserData]]
     username.map((sessionId, _))
