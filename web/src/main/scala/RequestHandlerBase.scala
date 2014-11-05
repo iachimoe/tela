@@ -3,7 +3,6 @@ package tela.web
 import java.io.{File, FileReader, StringWriter}
 
 import akka.actor.{Actor, ActorLogging}
-import com.github.mustachejava.DefaultMustacheFactory
 import org.mashupbots.socko.events.{HttpRequestEvent, HttpResponseMessage, HttpResponseStatus}
 import play.api.libs.json.Json
 
@@ -29,7 +28,7 @@ abstract class RequestHandlerBase extends Actor with ActorLogging {
   }
 
   private def getContent(filename: String, preferredLanguage: String, templateMap: Map[String, String]): String = {
-    val mustache = new DefaultMustacheFactory().compile(new FileReader(new File(getDocumentRoot, filename)), "")
+    val mustache = new NonEscapingMustacheFactory().compile(new FileReader(new File(getDocumentRoot, filename)), "")
     val writer = new StringWriter
     mustache.execute(writer, getTemplateMappings(preferredLanguage, templateMap).map(mapAsJavaMap).toArray[java.lang.Object])
     writer.toString

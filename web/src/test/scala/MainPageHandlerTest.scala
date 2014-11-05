@@ -7,12 +7,18 @@ import io.netty.handler.codec.http._
 import org.junit.Assert._
 import org.junit.{Before, Test}
 import org.mashupbots.socko.events.{HttpRequestEvent, HttpResponseStatus}
+import play.api.libs.json.Json
 import tela.baseinterfaces.LoginFailure
 import tela.web.SessionManager.{GetSession, Login, Logout}
+
+import scala.io.Source
 
 class MainPageHandlerTest extends SockoHandlerTestBase {
   private val TestPassword = "myPass"
   private val ContentFolder = "web/src/main/html/"
+  private val TestAppIndex = "web/src/test/data/appIndex.json"
+  private val AppIndexData = Json.parse(Source.fromFile(TestAppIndex).mkString)
+
 
   @Before def initialize(): Unit = {
     doBasicInitialization()
@@ -117,7 +123,12 @@ class MainPageHandlerTest extends SockoHandlerTestBase {
     initializeTestActor()
     handler ! event
 
-    assertResponseContent(event.response, IndexPage, ContentFolder, getMappingsForLanguage(ContentFolder, DefaultLanguage), Map(MainPageHandler.UserTemplateKey -> TestUsername))
+    assertResponseContent(event.response, IndexPage, ContentFolder,
+      getMappingsForLanguage(ContentFolder, DefaultLanguage),
+      Map(MainPageHandler.UserTemplateKey -> TestUsername,
+        MainPageHandler.AppInfoKey -> getAppsFromIndexData,
+        MainPageHandler.DefaultAppKey -> getDefaultAppFromIndexData,
+        MainPageHandler.LocalizedAppNamesKey -> getLanguageFromIndexData(DefaultLanguage)))
   }
 
   @Test def requestWithInvalidSessionCookieRedirectsToLoginPage(): Unit = {
@@ -189,11 +200,35 @@ class MainPageHandlerTest extends SockoHandlerTestBase {
   @Test def unknownLanguage(): Unit = {
     initializeTestActor()
 
-    val event: HttpRequestEvent = createHttpRequestEvent(HttpMethod.GET, MainPageHandler.WebAppRoot, Map(HttpHeaders.Names.ACCEPT_LANGUAGE -> "XX;q=0.8,en;q=0.6"))
+    sessionManagerProbe.setAutoPilot(new TestActor.AutoPilot {
+      def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
+        msg match {
+          case Login(TestUsername, TestPassword, "XX") =>
+            sender ! Right(TestSessionId)
+            KeepRunning
+          case GetSession(TestSessionId) =>
+            sender ! Some(new UserData(TestUsername, "XX"))
+            NoAutoPilot
+        }
+    })
 
+    handler ! createHttpRequestEvent(HttpMethod.POST, MainPageHandler.WebAppRoot,
+      Map(HttpHeaders.Names.CONTENT_TYPE -> "application/x-www-form-urlencoded", HttpHeaders.Names.ACCEPT_LANGUAGE -> "XX;q=0.8,en;q=0.6"),
+      MainPageHandler.UsernameRequestParameter + "=" + TestUsername + "&" + MainPageHandler.PasswordRequestParameter + "=" + TestPassword)
+
+    val event = createHttpRequestEvent(HttpMethod.GET, MainPageHandler.WebAppRoot,
+      Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId)),
+        HttpHeaders.Names.ACCEPT_LANGUAGE -> "XX;q=0.8,en;q=0.6"))
+
+    initializeTestActor()
     handler ! event
 
-    assertResponseContent(event.response, MainPageHandler.LoginPage, ContentFolder, getMappingsForLanguage(ContentFolder, DefaultLanguage))
+    assertResponseContent(event.response, IndexPage, ContentFolder,
+      getMappingsForLanguage(ContentFolder, DefaultLanguage),
+      Map(MainPageHandler.UserTemplateKey -> TestUsername,
+        MainPageHandler.AppInfoKey -> getAppsFromIndexData,
+        MainPageHandler.DefaultAppKey -> getDefaultAppFromIndexData,
+        MainPageHandler.LocalizedAppNamesKey -> getLanguageFromIndexData(DefaultLanguage)))
   }
 
   @Test def preferredLanguageIsEstablishedFromSessionData(): Unit = {
@@ -222,11 +257,27 @@ class MainPageHandlerTest extends SockoHandlerTestBase {
     initializeTestActor()
     handler ! event
 
-    assertResponseContent(event.response, IndexPage, ContentFolder, getMappingsForLanguage(ContentFolder, "es"), Map(MainPageHandler.UserTemplateKey -> TestUsername))
+    assertResponseContent(event.response, IndexPage, ContentFolder, getMappingsForLanguage(ContentFolder, "es"),
+      Map(MainPageHandler.UserTemplateKey -> TestUsername,
+        MainPageHandler.AppInfoKey -> getAppsFromIndexData,
+        MainPageHandler.DefaultAppKey -> getDefaultAppFromIndexData,
+        MainPageHandler.LocalizedAppNamesKey -> getLanguageFromIndexData("es")))
+  }
+
+  private def getLanguageFromIndexData(language: String): String = {
+    Json.stringify(AppIndexData \ MainPageHandler.LanguagesKeyInIndexHash \ language)
+  }
+
+  private def getDefaultAppFromIndexData: String = {
+    (AppIndexData \ MainPageHandler.DefaultAppKeyInIndexHash).as[String]
+  }
+
+  private def getAppsFromIndexData: String = {
+    Json.stringify(AppIndexData \ MainPageHandler.AppsKeyInIndexHash)
   }
 
   private def initializeTestActor(): Unit = {
-    handler = TestActorRef(new MainPageHandler(ContentFolder, sessionManagerProbe.ref))
+    handler = TestActorRef(new MainPageHandler(ContentFolder, TestAppIndex, sessionManagerProbe.ref))
   }
 
   private def assertCookie(expected: Cookie, event: HttpRequestEvent): Unit = {

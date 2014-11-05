@@ -2,28 +2,215 @@
 <html>
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{indexPageTitle}}</title>
 
     <script>
-        function setFrameHeightToFitContent(frame) {
-            frame.style.height = frame.contentWindow.document.body.scrollHeight + 'px';
+        var appInfo = {{appInfo}};
+
+        var defaultApp = "{{defaultApp}}";
+
+        var localizedAppNames = {{localizedAppNames}};
+
+        var appToFrameMap = {};
+
+        function addFrame(info) {
+            var frame = document.createElement("iframe");
+            frame.setAttribute("src", info["address"]);
+
+            if (fullSizedScreen()) {
+                if (info["isRight"]) {
+                    frame.setAttribute("style", "width:100%");
+                    document.getElementById("rightColumn").appendChild(frame);
+                }
+                else {
+                    document.getElementById("leftColumn").appendChild(frame);
+                }
+            }
+            else {
+                if (info["name"] === defaultApp) {
+                    document.getElementById("app").appendChild(frame);
+                }
+                frame.style.width = "100%";
+
+                var link = document.createElement("a");
+                link.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    switchToApp(info["name"]);
+                    document.getElementById("appSelectorForTouchDrops").style.visibility = "hidden";
+                });
+                link.innerHTML = localizedAppNames[info["name"]];
+                link.href = "#";
+                document.getElementById("appSelectorForTouchDropsLinks").appendChild(link);
+                document.getElementById("appSelectorForTouchDropsLinks").appendChild(createHtmlElementFromText("<br/>"));
+                document.getElementById("appSelectorForTouchDropsLinks").appendChild(createHtmlElementFromText("<br/>"));
+
+                var option = document.createElement("option");
+                option.setAttribute("value", info["name"]);
+                option.innerHTML = localizedAppNames[info["name"]];
+                document.getElementById("appSwitcherSelector").appendChild(option);
+
+                appToFrameMap[info["name"]] = frame;
+            }
         }
+
+        function createHtmlElementFromText(code) {
+            var div = document.createElement('div');
+            div.innerHTML = code;
+            return div.firstChild;
+        }
+
+        function addFrames() {
+            if (fullSizedScreen()) {
+                addDivToBody("leftColumn", "float:left");
+                addDivToBody("rightColumn", "float:right;width:35%");
+            }
+            else {
+                addDivToBody("app");
+                addDivToBody("appSwitcher", "position:fixed;left:0px;bottom:0px;height:30px;width:100%;background:#999");
+                var selector = document.createElement("select");
+                selector.setAttribute("id", "appSwitcherSelector");
+                selector.addEventListener('change', function () {
+                    switchToApp(selector.value);
+                });
+                document.getElementById("appSwitcher").appendChild(selector);
+            }
+
+            for (var i = 0; i < appInfo.length; i++) {
+                addFrame(appInfo[i]);
+            }
+
+            if (!fullSizedScreen()) {
+                document.getElementById("appSwitcherSelector").value = defaultApp;
+            }
+        }
+
+        function switchToApp(appName) {
+            document.getElementById("appSwitcherSelector").value = appName;
+            document.getElementById("app").removeChild(document.getElementById("app").children[0]);
+            document.getElementById("app").appendChild(appToFrameMap[appName]);
+        }
+
+        function fullSizedScreen() {
+            return window.matchMedia("(min-width: 768px)").matches;
+        }
+
+        function addDivToBody(id, style) {
+            var div = document.createElement("div");
+            div.setAttribute("id", id);
+
+            if (style)
+                div.setAttribute("style", style);
+
+            document.body.appendChild(div);
+        }
+
+        var dropItemOnLoad = null;
+
+        function childFrameLoaded(window) {
+            if (dropItemOnLoad != null) {
+                if (typeof window.handleDrop === 'function') {
+                    window.handleDrop(dropItemOnLoad);
+                }
+            }
+            else {
+                if (typeof window.nothingToDrop === 'function') {
+                    window.nothingToDrop();
+                }
+            }
+            dropItemOnLoad = null;
+        }
+
+        var dragItem = null;
+
+        function childTouchDragMove(window, touch, item) {
+            var frame = getIframeFromWindow(window);
+
+            var left = frame.getBoundingClientRect().left + touch.clientX;
+            var top = frame.getBoundingClientRect().top + touch.clientY;
+
+            dragItem.style.left = left + "px";
+            dragItem.style.top = top + "px";
+        }
+
+        function childTouchDragEnd(window, touch, item) {
+            document.body.removeChild(dragItem);
+            var frame = getIframeFromWindow(window);
+            var left = (frame.getBoundingClientRect().left + touch.clientX) - 1;
+            var top = frame.getBoundingClientRect().top + touch.clientY;
+            var element = document.elementFromPoint(left, top);
+            if (element.tagName.toLowerCase() === "iframe") {
+                if (typeof element.contentWindow.handleDrop === 'function') {
+                    element.contentWindow.handleDrop(dragItem.innerHTML);
+                }
+            }
+            else if (element.id === "appSwitcher" || element.id === "appSwitcherSelector") {
+                dropItemOnLoad = dragItem.innerHTML;
+                document.getElementById("appSelectorForTouchDrops").style.visibility = "visible";
+            }
+            dragItem = null;
+        }
+
+        function childTouchDragStart(window, touch, item) {
+            var frame = getIframeFromWindow(window);
+            dragItem = document.createElement("div");
+            dragItem.innerHTML = item;
+
+            var left = frame.getBoundingClientRect().left + touch.clientX;
+            var top = frame.getBoundingClientRect().top + touch.clientY;
+
+            dragItem.style.position = "absolute";
+            dragItem.style.left = left + "px";
+            dragItem.style.top = top + "px";
+            document.body.appendChild(dragItem);
+        }
+
+        function getIframeFromWindow(window) {
+            var frames = document.getElementsByTagName('iframe');
+            for (var i = 0, len = frames.length; i < len; i++) {
+                if (frames[i].contentWindow == window) {
+                    return frames[i];
+                }
+            }
+            return null;
+        }
+
+        /*function setFrameHeightToFitContent(frame) {
+         frame.style.height = frame.contentWindow.document.body.scrollHeight + 'px';
+         }*/
     </script>
+
+    <style>
+        #appSelectorForTouchDrops {
+            visibility: hidden;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 99999;
+        }
+
+        #appSelectorForTouchDropsLinks {
+            position: absolute;
+            background: #fff;
+            background: -moz-linear-gradient(#fff, #999);
+            background: -webkit-linear-gradient(#fff, #999);
+            background: -o-linear-gradient(#fff, #999);
+            border-radius: 10px;
+            padding: 20px;
+        }
+    </style>
 </head>
-<body>
+<body onload="addFrames()">
 <div style="float: left">{{welcome}} {{user}}</div>
 <div style="float: right"><a href="?logout">{{logout}}</a></div>
-
-<br/><br/>
-
-<iframe src="apps/DisplayProfile/index.html"></iframe>
-
-<iframe src="apps/EditProfile/index.html"></iframe>
-
-<div style="float:right;width:35%">
-    <iframe src="apps/Settings/index.html" style="width:100%" onload="setFrameHeightToFitContent(this)"></iframe>
-    <iframe src="apps/ContactList/index.html" style="width:100%"></iframe>
+<div id="appSelectorForTouchDrops">
+    <div id="appSelectorForTouchDropsLinks"></div>
 </div>
+<br/><br/>
 
 </body>
 </html>

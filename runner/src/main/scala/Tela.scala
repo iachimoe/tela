@@ -76,11 +76,14 @@ object Tela {
   }
 
   private def configureWebServerRoutes(actorSystem: ActorSystem): PartialFunction[SockoEvent, Unit] = {
+    //val staticContentHandlerRouter = actorSystem.actorOf(Props(new StaticContentHandler(new StaticContentHandlerConfig(rootFilePaths = Seq("/Users/will/dev/tela/web/src/main/static")))))
+
     Routes({
       case HttpRequest(request) => request match {
-        case Path("/") => actorSystem.actorOf(Props(new MainPageHandler(LoginPageRoot, sessionManager))) ! request
+        case Path("/") => actorSystem.actorOf(Props(new MainPageHandler(LoginPageRoot, AppRoot + "/appIndex.json", sessionManager))) ! request
         case Path("/data") => actorSystem.actorOf(Props(new DataHandler(sessionManager))) ! request
         case PathSegments("apps" :: relativePath :: theRest) => actorSystem.actorOf(Props(new AppHandler(AppRoot + "/apps", relativePath, sessionManager))) ! request
+        //case PathSegments("static" :: file :: Nil) => staticContentHandlerRouter ! new StaticFileRequest(request, new File("web/src/main/static", file))
         case _ => request.response.write(HttpResponseStatus.NOT_FOUND)
       }
       case WebSocketHandshake(wsHandshake) => wsHandshake match {

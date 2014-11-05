@@ -4,11 +4,13 @@ import akka.actor.ActorRef
 import akka.pattern.ask
 import io.netty.handler.codec.http._
 import org.mashupbots.socko.events.{HttpRequestEvent, HttpRequestMessage, HttpResponseStatus}
+import play.api.libs.json.{JsUndefined, Json}
 import tela.baseinterfaces.LoginFailure
 import tela.web.MainPageHandler._
 import tela.web.SessionManager.{GetSession, Login, Logout}
 
 import scala.concurrent.Await
+import scala.io.Source
 
 object MainPageHandler {
   private[web] val LoginPage: String = "login.html"
@@ -23,9 +25,19 @@ object MainPageHandler {
   private[web] val ConnectionFailedError = "connectionFailed"
   private[web] val BadCredentialsError = "badCredentials"
   private[web] val LoginFailureReasons: Map[LoginFailure, String] = Map(LoginFailure.ConnectionFailure -> ConnectionFailedError, LoginFailure.InvalidCredentials -> BadCredentialsError)
+
+  private[web] val AppInfoKey = "appInfo"
+  private[web] val DefaultAppKey = "defaultApp"
+  private[web] val LocalizedAppNamesKey = "localizedAppNames"
+
+  private[web] val DefaultAppKeyInIndexHash = "defaultApp"
+  private[web] val LanguagesKeyInIndexHash = "languages"
+  private[web] val AppsKeyInIndexHash = "apps"
 }
 
-class MainPageHandler(private val documentRoot: String, private val sessionManager: ActorRef) extends RequestHandlerBase {
+class MainPageHandler(private val documentRoot: String, private val appIndex: String, private val sessionManager: ActorRef) extends RequestHandlerBase {
+  private val appIndexData = Json.parse(Source.fromFile(appIndex).mkString)
+
   override def receive: Receive = {
     case event: HttpRequestEvent =>
       if (event.endPoint.isGET) {
@@ -71,7 +83,17 @@ class MainPageHandler(private val documentRoot: String, private val sessionManag
   }
 
   private def displayMainPage(event: HttpRequestEvent, userData: UserData): Unit = {
-    displayPage(event.response, Map(), IndexPage, userData.language, Map(UserTemplateKey -> userData.name))
+    val preferredLanguage = appIndexData \ LanguagesKeyInIndexHash \ userData.language
+    val languageToUse = Json.stringify(preferredLanguage match {
+      case _: JsUndefined => appIndexData \ LanguagesKeyInIndexHash \ DefaultLanguage
+      case lang => lang
+    })
+
+    displayPage(event.response, Map(), IndexPage, userData.language,
+      Map(UserTemplateKey -> userData.name,
+        AppInfoKey -> Json.stringify(appIndexData \ AppsKeyInIndexHash),
+        DefaultAppKey -> (appIndexData \ DefaultAppKeyInIndexHash).as[String],
+        LocalizedAppNamesKey -> languageToUse))
   }
 
   private def handleSuccessfulLogin(event: HttpRequestEvent, sessionId: String): Unit = {

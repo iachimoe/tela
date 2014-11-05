@@ -66,8 +66,30 @@
     function createContactNode(item) {
         var container = document.createElement("div");
         container.setAttribute("jid", item);
+        container.setAttribute("style", "position:relative");
+
         container.setAttribute("draggable", "true");
         container.setAttribute("ondragstart", "drag(event)");
+
+        container.addEventListener('touchmove', function (event) {
+            event.preventDefault();
+            if (event.targetTouches.length == 1) {
+                parent.childTouchDragMove(window, event.targetTouches[0], item);
+            }
+        }, false);
+
+        container.addEventListener('touchstart', function (event) {
+            event.preventDefault();
+            if (event.targetTouches.length == 1) {
+                parent.childTouchDragStart(window, event.targetTouches[0], item);
+            }
+        }, false);
+
+        container.addEventListener('touchend', function (event) {
+            event.preventDefault();
+            parent.childTouchDragEnd(window, event.changedTouches[0], item);
+        }, false);
+
         container.appendChild(createHtmlElementFromText("<div class='presenceBubble'></div>"));
         container.appendChild(createHtmlElementFromText("<span>&NonBreakingSpace;" + item + "</span>"));
         container.appendChild(createHtmlElementFromText("<br />"));
@@ -99,7 +121,7 @@
     }
 </script>
 <body onLoad="establishConnection()">
-<span><select onChange="setPresence(this.options[this.selectedIndex].value)">
+<span><select onChange="setPresence(this.value)">
     <option value="available">{{available}}</option>
     <option value="away">{{away}}</option>
     <option value="donotdisturb">{{doNotDisturb}}</option>

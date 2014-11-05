@@ -1,0 +1,18 @@
+{
+    "apps": [
+        {
+            "name": "app1",
+            "address": "app1Address",
+            "isRight": false
+        }
+    ],
+    "defaultApp": "app1",
+    "languages": {
+        "en": {
+            "app1": "Test"
+        },
+        "es": {
+            "app1": "Prueba"
+        }
+    }
+}

@@ -8,7 +8,7 @@ libraryDependencies += "com.typesafe.play" % "play-json_2.11" % "latest.integrat
 
 libraryDependencies += "junit" % "junit" % "latest.integration" % Test
 
-libraryDependencies += "org.scalatest" % "scalatest_2.11" % "latest.integration" % Test
+libraryDependencies += "org.scalatest" % "scalatest_2.11" % "2.2.3-SNAP2" % Test
 
 libraryDependencies += "org.mockito" % "mockito-core" % "latest.integration" % Test
 

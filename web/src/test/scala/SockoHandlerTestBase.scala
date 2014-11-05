@@ -4,7 +4,6 @@ import java.io.{FileReader, StringWriter}
 
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.TestProbe
-import com.github.mustachejava.DefaultMustacheFactory
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http._
@@ -57,7 +56,7 @@ class SockoHandlerTestBase extends AssertionsForJUnit with MockitoSugar {
   }
 
   protected def assertResponseContent(response: HttpResponseMessage, template: String, contentRoot: String, templateMappings: Map[String, String]*): Unit = {
-    val mustache = (new DefaultMustacheFactory).compile(new FileReader(contentRoot + "/" + template), "")
+    val mustache = (new NonEscapingMustacheFactory).compile(new FileReader(contentRoot + "/" + template), "")
     val writer = new StringWriter
     mustache.execute(writer, templateMappings.map(mapAsJavaMap).toArray[Object])
     assertResponseContent(response, writer.toString)

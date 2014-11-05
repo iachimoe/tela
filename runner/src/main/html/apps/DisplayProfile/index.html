@@ -7,7 +7,15 @@
 
     function drop(event) {
         event.preventDefault();
-        downloadProfileInfo(event.dataTransfer.getData("text"));
+        handleDrop(event.dataTransfer.getData("text"));
+    }
+
+    function handleDrop(item) {
+        downloadProfileInfo(item);
+    }
+
+    function nothingToDrop() {
+        downloadOwnProfile();
     }
 
     function downloadOwnProfile() {
@@ -58,7 +66,7 @@
         return url;
     }
 </script>
-<body ondrop="drop(event)" ondragover="allowDrop(event)" onload="downloadOwnProfile()">
+<body ondrop="drop(event)" ondragover="allowDrop(event)" onload="parent.childFrameLoaded(window)">
 {{nameLabel}} <span id="name"></span><br/>
 {{jobTitleLabel}} <span id="jobTitle"></span><br/>
 {{emailLabel}} <span id="email"></span><br/>
