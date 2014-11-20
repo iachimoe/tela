@@ -1,0 +1,5 @@
+{
+    "unsupportedBrowserError": "Tu navegador no puede hacer llamadas de voz/video. Intenta Chrome o Firefox.",
+    "hangUp": "Colgar",
+    "audioOnly": "Solo audio"
+}

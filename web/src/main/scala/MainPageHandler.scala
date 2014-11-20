@@ -1,15 +1,13 @@
 package tela.web
 
 import akka.actor.ActorRef
-import akka.pattern.ask
 import io.netty.handler.codec.http._
 import org.mashupbots.socko.events.{HttpRequestEvent, HttpRequestMessage, HttpResponseStatus}
 import play.api.libs.json.{JsUndefined, Json}
 import tela.baseinterfaces.LoginFailure
 import tela.web.MainPageHandler._
-import tela.web.SessionManager.{GetSession, Login, Logout}
+import tela.web.SessionManager.{Login, Logout}
 
-import scala.concurrent.Await
 import scala.io.Source
 
 object MainPageHandler {
@@ -35,20 +33,18 @@ object MainPageHandler {
   private[web] val AppsKeyInIndexHash = "apps"
 }
 
-class MainPageHandler(private val documentRoot: String, private val appIndex: String, private val sessionManager: ActorRef) extends RequestHandlerBase {
+class MainPageHandler(sessionManager: ActorRef, documentRoot: String, appIndex: String) extends RequestHandlerBase(sessionManager) {
   private val appIndexData = Json.parse(Source.fromFile(appIndex).mkString)
 
   override def receive: Receive = {
     case event: HttpRequestEvent =>
       if (event.endPoint.isGET) {
-        getUserFromCookie(event.request) match {
-          case Some((sessionId, userData)) =>
-            if (event.endPoint.queryStringMap.contains(LogoutParameter))
-              handleLogout(event, sessionId, userData)
-            else
-              displayMainPage(event, userData)
-          case None => displayLoginScreen(event)
-        }
+        performActionDependingOnWhetherSessionExists(event.request, (sessionId: String, userData: UserData) => {
+          if (event.endPoint.queryStringMap.contains(LogoutParameter))
+            handleLogout(event, sessionId, userData)
+          else
+            displayMainPage(event, userData)
+        }, () => displayLoginScreen(event))
       }
       else if (event.endPoint.isPOST)
         handleLoginAttempt(event)
@@ -116,25 +112,12 @@ class MainPageHandler(private val documentRoot: String, private val appIndex: St
   }
 
   private def attemptLogin(username: String, password: String, preferredLanguage: String): Either[LoginFailure, String] = {
-    implicit val timeout = ActorTimeout
-    val future = sessionManager ? Login(username, password, preferredLanguage)
-    Await.result(future, timeout.duration).asInstanceOf[Either[LoginFailure, String]]
+    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(username, password, preferredLanguage))
   }
 
   private def createCookieString(name: String, value: String, maxAge: Long): String = {
     val cookie = new DefaultCookie(name, value)
     cookie.setMaxAge(maxAge)
     ServerCookieEncoder.encode(cookie)
-  }
-
-  private def getUserFromCookie(request: HttpRequestMessage): Option[(String, UserData)] = {
-    getSessionIdFromCookie(request).flatMap(getUserFromCookie)
-  }
-
-  private def getUserFromCookie(sessionId: String): Option[(String, UserData)] = {
-    implicit val timeout = ActorTimeout
-    val future = sessionManager ? GetSession(sessionId)
-    val username = Await.result(future, timeout.duration).asInstanceOf[Option[UserData]]
-    username.map((sessionId, _))
   }
 }

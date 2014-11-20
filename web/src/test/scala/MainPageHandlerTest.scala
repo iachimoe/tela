@@ -277,7 +277,7 @@ class MainPageHandlerTest extends SockoHandlerTestBase {
   }
 
   private def initializeTestActor(): Unit = {
-    handler = TestActorRef(new MainPageHandler(ContentFolder, TestAppIndex, sessionManagerProbe.ref))
+    handler = TestActorRef(new MainPageHandler(sessionManagerProbe.ref, ContentFolder, TestAppIndex))
   }
 
   private def assertCookie(expected: Cookie, event: HttpRequestEvent): Unit = {

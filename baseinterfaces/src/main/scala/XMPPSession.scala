@@ -32,11 +32,13 @@ object Presence {
 case class ContactInfo(jid: String, presence: Presence)
 
 trait XMPPSessionListener {
-  def contactsAdded(contacts: List[ContactInfo])
+  def contactsAdded(contacts: List[ContactInfo]): Unit
 
-  def contactsRemoved(contacts: List[String])
+  def contactsRemoved(contacts: List[String]): Unit
 
-  def presenceChanged(contact: ContactInfo)
+  def presenceChanged(contact: ContactInfo): Unit
+
+  def callSignalReceived(user: String, data: String): Unit
 }
 
 trait XMPPSession {
@@ -53,4 +55,6 @@ trait XMPPSession {
   def publish(node: String, content: String): Unit
 
   def getPublishedData(user: String, node: String): String
+
+  def sendCallSignal(user: String, data: String): Unit
 }

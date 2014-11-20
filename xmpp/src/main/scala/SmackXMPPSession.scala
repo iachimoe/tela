@@ -4,14 +4,18 @@ import com.typesafe.scalalogging.Logger
 import org.jivesoftware.smack.SmackException.ConnectionException
 import org.jivesoftware.smack.XMPPException.XMPPErrorException
 import org.jivesoftware.smack._
-import org.jivesoftware.smack.packet.Presence
+import org.jivesoftware.smack.filter.PacketTypeFilter
+import org.jivesoftware.smack.packet.IQ.Type
 import org.jivesoftware.smack.packet.Presence.Mode
+import org.jivesoftware.smack.packet.{IQ, Packet, Presence}
+import org.jivesoftware.smack.provider.{IQProvider, ProviderManager}
 import org.jivesoftware.smack.sasl.SASLErrorException
 import org.jivesoftware.smack.tcp.XMPPTCPConnection
 import org.jivesoftware.smackx.iqregister.AccountManager
 import org.jivesoftware.smackx.pubsub._
 import org.jxmpp.util.XmppStringUtils
 import org.slf4j.LoggerFactory
+import org.xmlpull.v1.XmlPullParser
 import tela.baseinterfaces
 import tela.baseinterfaces._
 import tela.xmpp.SmackXMPPSession._
@@ -28,6 +32,10 @@ object SmackXMPPSession {
 
   private[xmpp] val DefaultPriority = 0
   private[xmpp] val DefaultStatusText = ""
+
+  private[xmpp] val TelaURN = "urn:tela"
+
+  ProviderManager.addIQProvider("callSignal", TelaURN, new CallSignalProvider)
 
   def connectToServer(username: String, password: String, xmppSettings: XMPPSettings, sessionListener: XMPPSessionListener): Either[LoginFailure, XMPPSession] = {
     connectToServer(username, password, createTCPConnectionToServer(xmppSettings), xmppSettings, sessionListener)
@@ -55,6 +63,8 @@ object SmackXMPPSession {
       val session: SmackXMPPSession = new SmackXMPPSession(connection, sessionListener, xmppSettings)
       //TODO There seems to be a race condition with this not getting set on time.
       connection.getRoster.addRosterListener(new ContactListChangeListener(session))
+
+      connection.addPacketListener(new CallSignalPacketListener(session), new PacketTypeFilter(classOf[CallSignal]))
       Right(session)
     } catch {
       case ex: SASLErrorException =>
@@ -90,7 +100,30 @@ object SmackXMPPSession {
 
     override def presenceChanged(presence: Presence): Unit = {
       log.debug("User {} received presence changed info for {}", xmppSession.connection.getUser, presence.getFrom)
-      xmppSession.sessionListener.presenceChanged(ContactInfo(XmppStringUtils.parseBareAddress(presence.getFrom), xmppSession.getTelaPresenceFromXMPPPresence(presence)))
+      xmppSession.sessionListener.presenceChanged(ContactInfo(XmppStringUtils.parseBareJid(presence.getFrom), xmppSession.getTelaPresenceFromXMPPPresence(presence)))
+    }
+  }
+
+  private class CallSignalPacketListener(private val xmppSession: SmackXMPPSession) extends PacketListener {
+    override def processPacket(packet: Packet): Unit = {
+      log.debug("User {} received call signal packet", xmppSession.connection.getUser)
+      val signal = packet.asInstanceOf[CallSignal]
+      xmppSession.sessionListener.callSignalReceived(signal.getFrom, signal.data)
+    }
+  }
+
+  private[xmpp] class CallSignal(val data: String) extends IQ {
+    override def getChildElementXML: CharSequence = {
+      <callSignal xmlns={TelaURN}>
+        {data}
+      </callSignal>.toString()
+    }
+  }
+
+  private[xmpp] class CallSignalProvider extends IQProvider[CallSignal] {
+    override def parse(parser: XmlPullParser, initialDepth: Int): CallSignal = {
+      parser.next()
+      new CallSignal(parser.getText)
     }
   }
 
@@ -125,7 +158,7 @@ private class SmackXMPPSession(private val connection: AbstractXMPPConnection, p
   // BEGIN UNTESTED PUBSUB STUFF
 
   override def publish(nodeName: String, content: String): Unit = {
-    val manager = new PubSubManager(connection, XmppStringUtils.parseBareAddress(connection.getUser))
+    val manager = new PubSubManager(connection, XmppStringUtils.parseBareJid(connection.getUser))
 
     val node = getNode(manager, nodeName, connection.getUser).getOrElse(createNode(manager, nodeName))
 
@@ -144,8 +177,8 @@ private class SmackXMPPSession(private val connection: AbstractXMPPConnection, p
         if (items.nonEmpty)
           items(0).getPayload.toXML.toString
         else
-          "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'></rdf:RDF>"
-      case None => "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'></rdf:RDF>"
+          <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"></rdf:RDF>.toString()
+      case None => <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"></rdf:RDF>.toString()
     }
   }
 
@@ -177,6 +210,14 @@ private class SmackXMPPSession(private val connection: AbstractXMPPConnection, p
   }
 
   // END UNTESTED PUBSUB STUFF
+
+  override def sendCallSignal(user: String, data: String): Unit = {
+    log.info("User {} sending call signal to user {}", connection.getUser, user)
+    val signal: CallSignal = new CallSignal(data)
+    signal.setTo(if (XmppStringUtils.isFullJID(user)) user else user + "/" + DefaultResourceName)
+    signal.setType(Type.set)
+    connection.sendPacket(signal)
+  }
 
   private def getXMPPPresenceFromTelaPresence(presence: baseinterfaces.Presence): Mode = {
     presence match {
@@ -231,6 +272,8 @@ private class SmackXMPPSession(private val connection: AbstractXMPPConnection, p
     override def contactsRemoved(contacts: List[String]): Unit = {}
 
     override def presenceChanged(contact: ContactInfo): Unit = {}
+
+    override def callSignalReceived(user: String, data: String): Unit = {}
   }
 
 }

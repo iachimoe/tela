@@ -1,42 +1,23 @@
 <!DOCTYPE html>
 <html>
 <script>
-    var connection = null;
+    function getLanguages() {
+        parent.makeRESTRequest("/settings/languages", function (responseText) {
+            var info = JSON.parse(responseText);
+            var languages = info["languages"];
+            var selectedLanguage = info["selected"];
+            Object.keys(languages).forEach(function (item) {
+                var option = document.createElement("option");
+                option.value = item;
+                option.innerHTML = languages[item];
 
-    function establishConnection() {
-        connection = new WebSocket('ws://' + window.location.host + '/events');
+                if (selectedLanguage === item) {
+                    option.selected = "selected";
+                }
 
-        connection.onopen = function () {
-            connection.send(JSON.stringify({"action": "getLanguages"}));
-        };
-
-        connection.onclose = function () {
-        };
-
-        connection.onmessage = function (e) {
-            var message = JSON.parse(e.data);
-            if (message["action"] === "setLanguages") {
-                var languages = message["data"]["languages"];
-                var selectedLanguage = message["data"]["selected"];
-                Object.keys(languages).forEach(function (item) {
-                    var option = document.createElement("option");
-                    option.value = item;
-                    option.innerHTML = languages[item];
-
-                    if (selectedLanguage === item) {
-                        option.selected = "selected";
-                    }
-
-                    document.getElementById("languages").appendChild(option);
-                });
-            }
-            else if (message["action"] === "changePasswordSucceeded") {
-                document.getElementById("passwordChangeMessage").innerHTML = "{{changePasswordSucceeded}}"
-            }
-            else if (message["action"] === "changePasswordFailed") {
-                document.getElementById("passwordChangeMessage").innerHTML = "{{changePasswordFailed}}"
-            }
-        }
+                document.getElementById("languages").appendChild(option);
+            });
+        });
     }
 
     function changePassword() {
@@ -44,12 +25,16 @@
             document.getElementById("passwordChangeMessage").innerHTML = "{{changePasswordFailed}}"
         }
         else {
-            var json = {"action": "changePassword", "data": {"oldPassword": document.getElementById("oldPassword").value,
-                "newPassword": document.getElementById("newPassword").value}
-            };
-            connection.send(JSON.stringify(json));
+            parent.makeRESTRequestWithData("/settings/password", "application/x-www-form-urlencoded",
+                    "oldPassword=" + document.getElementById("oldPassword").value + "&newPassword=" + document.getElementById("newPassword").value,
+                    function (responseText) {
+                        document.getElementById("passwordChangeMessage").innerHTML = "{{changePasswordSucceeded}}"
+                    }, function () {
+                        document.getElementById("passwordChangeMessage").innerHTML = "{{changePasswordFailed}}"
+                    }
+            );
         }
-        clearChangePasswordFields()
+        clearChangePasswordFields();
     }
 
     function clearChangePasswordFields() {
@@ -59,12 +44,14 @@
     }
 
     function setLanguage(language) {
-        var json = {"action": "setLanguage", "data": language};
-        connection.send(JSON.stringify(json));
-        parent.location.reload()
+        parent.makeRESTRequestWithData("/settings/language", "application/x-www-form-urlencoded", "language=" + language,
+                function (responseText) {
+                    parent.location.reload();
+                }
+        );
     }
 </script>
-<body onLoad="establishConnection()">
+<body onLoad="getLanguages()">
 <label for="languages">{{changeLanguage}}</label><select id="languages"
                                                          onChange="setLanguage(this.options[this.selectedIndex].value)"></select><br/><br/>
 

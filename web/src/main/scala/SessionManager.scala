@@ -4,7 +4,7 @@ import java.util.UUID
 
 import akka.actor.{Actor, ActorLogging, ActorRef}
 import tela.baseinterfaces._
-import tela.web.JSONConversions.{AddContacts, LanguageInfo, PresenceUpdate}
+import tela.web.JSONConversions.{AddContacts, CallSignalReceipt, LanguageInfo, PresenceUpdate}
 import tela.web.SessionManager._
 import tela.web.WebSocketDataPusher._
 
@@ -38,6 +38,8 @@ object SessionManager {
 
   case class PublishData(sessionId: String, json: String, uri: String)
 
+  case class SendCallSignal(sessionId: String, user: String, data: String)
+
   private def generateRandomString: String = {
     UUID.randomUUID.toString
   }
@@ -67,6 +69,7 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
     case PublishData(sessionId, json, uri) => publishData(sessionId, json, uri)
     case RetrieveData(sessionId, uri) => retrieveData(sessionId, uri)
     case RetrievePublishedData(sessionId, user, uri) => retrievePublishedData(sessionId, user, uri)
+    case SendCallSignal(sessionId, user, data) => sendCallSignal(sessionId, user, data)
   }
 
   private def publishData(sessionId: String, json: String, uri: String): Unit = {
@@ -100,9 +103,9 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
     sessions += (sessionId -> sessions(sessionId).changeLanguage(language))
   }
 
-  def changePassword(sessionId: String, oldPassword: String, newPassword: String) {
+  def changePassword(sessionId: String, oldPassword: String, newPassword: String): Unit = {
     log.debug("Attempting to change password for user with session {}", sessionId)
-    webSocketDataPusher ! SendChangePasswordResult(sessions(sessionId).xmppSession.changePassword(oldPassword, newPassword), sessions(sessionId).webSockets)
+    sender ! sessions(sessionId).xmppSession.changePassword(oldPassword, newPassword)
   }
 
   private def unregisterWebSocket(sessionId: String, webSocketId: String): Unit = {
@@ -123,7 +126,7 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
 
   private def sendLanguagesInfo(sessionId: String): Unit = {
     log.debug("Sending language info for session {}", sessionId)
-    webSocketDataPusher ! SendLanguages(LanguageInfo(languages, sessions(sessionId).userData.language), sessions(sessionId).webSockets)
+    sender ! LanguageInfo(languages, sessions(sessionId).userData.language)
   }
 
   private def logout(sessionId: String): Unit = {
@@ -133,13 +136,18 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
     //TODO prevent an exception from cutting this process short
     sessionInfo.xmppSession.disconnect()
     sessionInfo.dataStoreConnection.closeConnection()
-    webSocketDataPusher ! CloseSockets(sessionInfo.webSockets)
+    webSocketDataPusher ! CloseWebSockets(sessionInfo.webSockets)
     sessions -= sessionId
   }
 
   private def setPresence(sessionId: String, presence: Presence): Unit = {
     log.debug("Session {} changing presence to {}", sessionId, presence)
     sessions(sessionId).xmppSession.setPresence(presence)
+  }
+
+  private def sendCallSignal(sessionId: String, user: String, data: String): Unit = {
+    log.debug("Session {} changing sending call signal {} to {}", sessionId, data, user)
+    sessions(sessionId).xmppSession.sendCallSignal(user, data)
   }
 
   private def retrieveSessionIfItExists(sessionId: String): Unit = {
@@ -169,13 +177,17 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
     var sessionId: String = null
 
     override def contactsAdded(contacts: List[ContactInfo]): Unit = {
-      webSocketDataPusher ! SendContactListInfo(AddContacts(contacts), sessions(sessionId).webSockets)
+      webSocketDataPusher ! PushContactListInfoToWebSockets(AddContacts(contacts), sessions(sessionId).webSockets)
     }
 
     override def contactsRemoved(contacts: List[String]): Unit = {}
 
     override def presenceChanged(contact: ContactInfo): Unit = {
-      webSocketDataPusher ! SendPresenceUpdate(PresenceUpdate(contact), sessions(sessionId).webSockets)
+      webSocketDataPusher ! PushPresenceUpdateToWebSockets(PresenceUpdate(contact), sessions(sessionId).webSockets)
+    }
+
+    override def callSignalReceived(user: String, data: String): Unit = {
+      webSocketDataPusher ! PushCallSignalToWebSockets(CallSignalReceipt(user, data), sessions(sessionId).webSockets)
     }
   }
 

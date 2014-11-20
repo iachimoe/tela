@@ -6,6 +6,8 @@ libraryDependencies += "org.igniterealtime.smack" % "smack-tcp" % "4.1.0-alpha5"
 
 libraryDependencies += "org.igniterealtime.smack" % "smack-java7" % "4.1.0-alpha5"
 
+libraryDependencies += "org.scala-lang.modules" %% "scala-xml" % "latest.integration"
+
 libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "latest.integration"
 
 libraryDependencies += "junit" % "junit" % "latest.integration" % Test

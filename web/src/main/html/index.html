@@ -6,6 +6,84 @@
     <title>{{indexPageTitle}}</title>
 
     <script>
+        // BEGIN REST FUNCTIONS
+
+        function makeRESTRequest(address, handleSuccess, handleFailure) {
+            var client = new XMLHttpRequest();
+            client.open("GET", address);
+
+            var received = 0;
+
+            client.onreadystatechange = function () {
+                if (client.readyState == 4 && received == 0) {
+                    received++;
+                    if (client.status == 200) {
+                        if (handleSuccess != null) {
+                            handleSuccess(client.responseText);
+                        }
+                    } else {
+                        if (handleFailure != null) {
+                            handleFailure();
+                        }
+                    }
+                }
+            };
+            client.send();
+        }
+
+        function makeRESTRequestWithData(address, contentType, content, handleSuccess, handleFailure) {
+            var client = new XMLHttpRequest();
+            client.open("PUT", address);
+            client.setRequestHeader("Content-Type", contentType);
+
+            var received = 0;
+
+            client.onreadystatechange = function () {
+                if (client.readyState == 4 && received == 0) {
+                    received++;
+                    if (client.status == 200) {
+                        if (handleSuccess != null) {
+                            handleSuccess(client.responseText);
+                        }
+                    } else {
+                        if (handleFailure != null) {
+                            handleFailure();
+                        }
+                    }
+                }
+            };
+            client.send(content);
+        }
+
+        function createJsonLdObjectAsString(id, type, data) {
+            var JSON_LD_ID = "@id";
+            var JSON_LD_TYPE = "@type";
+
+            var jsonLdObject = {};
+            jsonLdObject[JSON_LD_ID] = id;
+            jsonLdObject[JSON_LD_TYPE] = [type];
+
+            Object.keys(data).forEach(function (key) {
+                jsonLdObject[key] = createJsonLdValue(data[key]);
+            });
+
+            return JSON.stringify([jsonLdObject]);
+        }
+
+        function getValueOfJsonLdField(data, field) {
+            var JSON_LD_VALUE = "@value";
+            return data[field][0][JSON_LD_VALUE];
+        }
+
+        function createJsonLdValue(value) {
+            var JSON_LD_VALUE = "@value";
+            var result = {};
+            result[JSON_LD_VALUE] = value;
+            return [result];
+        }
+
+        // BEGIN FRAME MANAGEMENT FUNCTIONS
+
         var appInfo = {{appInfo}};
 
         var defaultApp = "{{defaultApp}}";
@@ -19,61 +97,71 @@
             frame.setAttribute("src", info["address"]);
 
             if (fullSizedScreen()) {
-                if (info["isRight"]) {
-                    frame.setAttribute("style", "width:100%");
-                    document.getElementById("rightColumn").appendChild(frame);
-                }
-                else {
-                    document.getElementById("leftColumn").appendChild(frame);
-                }
+                addFrameToFullSizedScreen(frame, info);
             }
             else {
-                if (info["name"] === defaultApp) {
-                    document.getElementById("app").appendChild(frame);
-                }
+                addFrameToSmallScreen(frame, info);
+            }
+        }
+
+        function addFrameToSmallScreen(frame, info) {
+            if (info["name"] === defaultApp) {
+                document.getElementById("app").appendChild(frame);
+            }
+            frame.style.width = "100%";
+            frame.style.height = "100%";
+
+            addFrameLinkToTouchDropSelector(info);
+            addFrameToSwitcherSelector(info);
+
+            appToFrameMap[info["name"]] = frame;
+        }
+
+        function addFrameLinkToTouchDropSelector(info) {
+            var link = document.createElement("a");
+            link.addEventListener('click', function (event) {
+                event.preventDefault();
+                switchToApp(info["name"]);
+                document.getElementById("appSelectorForTouchDrops").style.visibility = "hidden";
+            });
+            link.innerHTML = localizedAppNames[info["name"]];
+            link.href = "#";
+            document.getElementById("appSelectorForTouchDropsLinks").appendChild(link);
+            document.getElementById("appSelectorForTouchDropsLinks").appendChild(createHtmlElementFromText("<br/>"));
+            document.getElementById("appSelectorForTouchDropsLinks").appendChild(createHtmlElementFromText("<br/>"));
+        }
+
+        function addFrameToSwitcherSelector(info) {
+            var option = document.createElement("option");
+            option.setAttribute("value", info["name"]);
+            option.innerHTML = localizedAppNames[info["name"]];
+            document.getElementById("appSwitcherSelector").appendChild(option);
+        }
+
+        function addFrameToFullSizedScreen(frame, info) {
+            if (info["isRight"]) {
                 frame.style.width = "100%";
-
-                var link = document.createElement("a");
-                link.addEventListener('click', function (event) {
-                    event.preventDefault();
-                    switchToApp(info["name"]);
-                    document.getElementById("appSelectorForTouchDrops").style.visibility = "hidden";
-                });
-                link.innerHTML = localizedAppNames[info["name"]];
-                link.href = "#";
-                document.getElementById("appSelectorForTouchDropsLinks").appendChild(link);
-                document.getElementById("appSelectorForTouchDropsLinks").appendChild(createHtmlElementFromText("<br/>"));
-                document.getElementById("appSelectorForTouchDropsLinks").appendChild(createHtmlElementFromText("<br/>"));
-
-                var option = document.createElement("option");
-                option.setAttribute("value", info["name"]);
-                option.innerHTML = localizedAppNames[info["name"]];
-                document.getElementById("appSwitcherSelector").appendChild(option);
-
-                appToFrameMap[info["name"]] = frame;
+                document.getElementById("rightColumn").appendChild(frame);
+            }
+            else {
+                frame.style.width = "720px";
+                frame.style.height = "540px";
+                document.getElementById("leftColumn").appendChild(frame);
             }
         }
 
         function createHtmlElementFromText(code) {
-            var div = document.createElement('div');
+            var div = document.createElement("div");
             div.innerHTML = code;
             return div.firstChild;
         }
 
         function addFrames() {
             if (fullSizedScreen()) {
-                addDivToBody("leftColumn", "float:left");
-                addDivToBody("rightColumn", "float:right;width:35%");
+                document.getElementById("largeScreenLayout").style.display = "block";
             }
             else {
-                addDivToBody("app");
-                addDivToBody("appSwitcher", "position:fixed;left:0px;bottom:0px;height:30px;width:100%;background:#999");
-                var selector = document.createElement("select");
-                selector.setAttribute("id", "appSwitcherSelector");
-                selector.addEventListener('change', function () {
-                    switchToApp(selector.value);
-                });
-                document.getElementById("appSwitcher").appendChild(selector);
+                document.getElementById("smallScreenLayout").style.display = "block";
             }
 
             for (var i = 0; i < appInfo.length; i++) {
@@ -92,38 +180,30 @@
         }
 
         function fullSizedScreen() {
-            return window.matchMedia("(min-width: 768px)").matches;
+            return window.innerWidth > 980; //grumble
+            //return window.matchMedia("(min-width: 768px)").matches;
         }
 
-        function addDivToBody(id, style) {
-            var div = document.createElement("div");
-            div.setAttribute("id", id);
-
-            if (style)
-                div.setAttribute("style", style);
-
-            document.body.appendChild(div);
-        }
+        // BEGIN DRAG/DROP FUNCTIONS
 
         var dropItemOnLoad = null;
+        var dragItem = null;
 
         function childFrameLoaded(window) {
             if (dropItemOnLoad != null) {
-                if (typeof window.handleDrop === 'function') {
+                if (typeof window.handleDrop === "function") {
                     window.handleDrop(dropItemOnLoad);
                 }
             }
             else {
-                if (typeof window.nothingToDrop === 'function') {
+                if (typeof window.nothingToDrop === "function") {
                     window.nothingToDrop();
                 }
             }
             dropItemOnLoad = null;
         }
 
-        var dragItem = null;
-
-        function childTouchDragMove(window, touch, item) {
+        function childTouchDragMove(window, touch) {
             var frame = getIframeFromWindow(window);
 
             var left = frame.getBoundingClientRect().left + touch.clientX;
@@ -133,14 +213,14 @@
             dragItem.style.top = top + "px";
         }
 
-        function childTouchDragEnd(window, touch, item) {
+        function childTouchDragEnd(window, touch) {
             document.body.removeChild(dragItem);
             var frame = getIframeFromWindow(window);
             var left = (frame.getBoundingClientRect().left + touch.clientX) - 1;
             var top = frame.getBoundingClientRect().top + touch.clientY;
             var element = document.elementFromPoint(left, top);
             if (element.tagName.toLowerCase() === "iframe") {
-                if (typeof element.contentWindow.handleDrop === 'function') {
+                if (typeof element.contentWindow.handleDrop === "function") {
                     element.contentWindow.handleDrop(dragItem.innerHTML);
                 }
             }
@@ -166,7 +246,7 @@
         }
 
         function getIframeFromWindow(window) {
-            var frames = document.getElementsByTagName('iframe');
+            var frames = document.getElementsByTagName("iframe");
             for (var i = 0, len = frames.length; i < len; i++) {
                 if (frames[i].contentWindow == window) {
                     return frames[i];
@@ -174,13 +254,41 @@
             }
             return null;
         }
-
-        /*function setFrameHeightToFitContent(frame) {
-         frame.style.height = frame.contentWindow.document.body.scrollHeight + 'px';
-         }*/
     </script>
 
     <style>
+        html, body {
+            height: 100%;
+        }
+
+        #largeScreenLayout {
+            clear:both;
+        }
+
+        #leftColumn {
+            float:left;
+            width:65%;
+        }
+
+        #rightColumn {
+            float:right;
+            width:35%;
+        }
+
+        #app, #smallScreenLayout {
+            width:100%;
+            height:100%
+        }
+
+        #appSwitcher {
+            position:fixed;
+            left:0px;
+            bottom:0px;
+            height:30px;
+            width:100%;
+            background:#999
+        }
+
         #appSelectorForTouchDrops {
             visibility: hidden;
             position: absolute;
@@ -205,12 +313,24 @@
     </style>
 </head>
 <body onload="addFrames()">
-<div style="float: left">{{welcome}} {{user}}</div>
-<div style="float: right"><a href="?logout">{{logout}}</a></div>
-<div id="appSelectorForTouchDrops">
-    <div id="appSelectorForTouchDropsLinks"></div>
-</div>
-<br/><br/>
+    <div style="float: left">{{welcome}} {{user}}</div>
+    <div style="float: right"><a href="?logout">{{logout}}</a></div>
 
+    <div id="largeScreenLayout" style="display:none">
+        <div id="leftColumn"></div>
+        <div id="rightColumn"></div>
+    </div>
+
+    <div id="smallScreenLayout" style="display:none">
+        <div id="app"></div>
+        <div id="appSwitcher">
+            <select id="appSwitcherSelector" onchange="switchToApp(this.value)"></select>
+        </div>
+
+        <div id="appSelectorForTouchDrops">
+            <div id="appSelectorForTouchDropsLinks"></div>
+        </div>
+    </div>
+    <br/><br/>
 </body>
 </html>

@@ -2,14 +2,15 @@ package tela.web
 
 import java.io.{File, FileReader, StringWriter}
 
-import akka.actor.{Actor, ActorLogging}
-import org.mashupbots.socko.events.{HttpRequestEvent, HttpResponseMessage, HttpResponseStatus}
+import akka.actor.{Actor, ActorLogging, ActorRef}
+import org.mashupbots.socko.events.{HttpRequestEvent, HttpRequestMessage, HttpResponseMessage, HttpResponseStatus}
 import play.api.libs.json.Json
+import tela.web.SessionManager.GetSession
 
 import scala.collection.JavaConversions._
 import scala.io.Source
 
-abstract class RequestHandlerBase extends Actor with ActorLogging {
+abstract class RequestHandlerBase(protected val sessionManager: ActorRef) extends Actor with ActorLogging {
   protected def getDocumentRoot: String
 
   protected def sendResponse(response: HttpResponseMessage, headers: Map[String, String], content: String, status: HttpResponseStatus = HttpResponseStatus.OK): Unit = {
@@ -18,7 +19,24 @@ abstract class RequestHandlerBase extends Actor with ActorLogging {
     response.write(content)
   }
 
-  protected def sendResponseToUnauthorizedUser(event: HttpRequestEvent): Unit = {
+  protected def performActionOnValidSessionOrSendUnauthorizedError(event: HttpRequestEvent, action: ((String, UserData) => Unit)): Unit = {
+    performActionDependingOnWhetherSessionExists(event.request, action, () => sendResponseToUnauthorizedUser(event))
+  }
+
+  protected def performActionDependingOnWhetherSessionExists(request: HttpRequestMessage,
+                                                             actionForExistingSession: ((String, UserData) => Unit),
+                                                             actionForUnauthorizedUser: (() => (Unit))): Unit = {
+    getSessionIdFromCookie(request) match {
+      case Some(sessionId) =>
+        sendMessageAndGetResponse[Option[UserData]](sessionManager, GetSession(sessionId)) match {
+          case Some(userData) => actionForExistingSession(sessionId, userData)
+          case None => actionForUnauthorizedUser()
+        }
+      case None => actionForUnauthorizedUser()
+    }
+  }
+
+  private def sendResponseToUnauthorizedUser(event: HttpRequestEvent): Unit = {
     sendResponse(event.response, Map(), "", HttpResponseStatus.UNAUTHORIZED)
   }
 

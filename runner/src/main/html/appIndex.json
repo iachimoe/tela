@@ -1,14 +1,19 @@
 {
     "apps": [
         {
-            "name": "displayProfile",
-            "address": "apps/DisplayProfile/index.html",
+            "name": "phone",
+            "address": "apps/Phone/index.html",
             "isRight": false
         },
         {
-            "name": "editProfile",
-            "address": "apps/EditProfile/index.html",
-            "isRight": false
+            "name": "contactList",
+            "address": "apps/ContactList/index.html",
+            "isRight": true
+        },
+        {
+            "name": "displayProfile",
+            "address": "apps/DisplayProfile/index.html",
+            "isRight": true
         },
         {
             "name": "settings",
@@ -16,8 +21,8 @@
             "isRight": true
         },
         {
-            "name": "contactList",
-            "address": "apps/ContactList/index.html",
+            "name": "editProfile",
+            "address": "apps/EditProfile/index.html",
             "isRight": true
         }
     ],
@@ -27,13 +32,15 @@
             "displayProfile": "Display Profile",
             "editProfile": "Edit Profile",
             "settings": "Settings",
-            "contactList": "Contact List"
+            "contactList": "Contact List",
+            "phone": "Phone"
         },
         "es": {
             "displayProfile": "Mostrar Perfil",
             "editProfile": "Editar Perfil",
             "settings": "Ajustes",
-            "contactList": "Contactos"
+            "contactList": "Contactos",
+            "phone": "Teléfono"
         }
     }
 }

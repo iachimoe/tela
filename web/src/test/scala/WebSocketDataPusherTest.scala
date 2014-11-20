@@ -32,30 +32,12 @@ class WebSocketDataPusherTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def close(): Unit = {
-    handler ! CloseSockets(TestWebSocketIds)
+    handler ! CloseWebSockets(TestWebSocketIds)
     assertSame(TestWebSocketIds, closedWebSocketIds)
   }
 
-  @Test def sendLanguages(): Unit = {
-    handler ! SendLanguages(LanguageInfo(Map("en" -> "English", "es" -> "Español"), "en"), TestWebSocketIds)
-    assertSame(TestWebSocketIds, writtenToWebSocketIds)
-    assertEquals( s"""{"$ActionKey":"$SetLanguagesAction","$DataKey":{"$LanguagesKey":{"en":"English","es":"Español"},"$SelectedLanguageKey":"en"}}""", writtenText)
-  }
-
-  @Test def sendChangePasswordResult_True(): Unit = {
-    handler ! SendChangePasswordResult(true, TestWebSocketIds)
-    assertSame(TestWebSocketIds, writtenToWebSocketIds)
-    assertEquals( s"""{"$ActionKey":"$ChangePasswordSucceeded"}""", writtenText)
-  }
-
-  @Test def sendChangePasswordResult_False(): Unit = {
-    handler ! SendChangePasswordResult(false, TestWebSocketIds)
-    assertSame(TestWebSocketIds, writtenToWebSocketIds)
-    assertEquals( s"""{"$ActionKey":"$ChangePasswordFailed"}""", writtenText)
-  }
-
   @Test def sendNewContacts(): Unit = {
-    handler ! SendContactListInfo(AddContacts(List(ContactInfo(TestUser1, Presence.Available), ContactInfo(TestUser2, Presence.Away))), TestWebSocketIds)
+    handler ! PushContactListInfoToWebSockets(AddContacts(List(ContactInfo(TestUser1, Presence.Available), ContactInfo(TestUser2, Presence.Away))), TestWebSocketIds)
     assertSame(TestWebSocketIds, writtenToWebSocketIds)
     assertEquals( s"""{"$ActionKey":"$AddContactsAction","$DataKey":[""" +
       s"""{"$ContactKey":"$TestUser1","$PresenceKey":"${Presence.Available.toString.toLowerCase}"},""" +
@@ -63,9 +45,15 @@ class WebSocketDataPusherTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def presenceUpdate(): Unit = {
-    handler ! SendPresenceUpdate(PresenceUpdate(ContactInfo(TestUser1, Presence.Away)), TestWebSocketIds)
+    handler ! PushPresenceUpdateToWebSockets(PresenceUpdate(ContactInfo(TestUser1, Presence.Away)), TestWebSocketIds)
     assertSame(TestWebSocketIds, writtenToWebSocketIds)
     assertEquals( s"""{"$ActionKey":"$PresenceUpdateAction","$DataKey":{"$ContactKey":"$TestUser1","$PresenceKey":"${Presence.Away.toString.toLowerCase}"}}""", writtenText)
+  }
+
+  @Test def callSignal(): Unit = {
+    handler ! PushCallSignalToWebSockets(CallSignalReceipt("user@host", "message"), TestWebSocketIds)
+    assertSame(TestWebSocketIds, writtenToWebSocketIds)
+    assertEquals( s"""{"$ActionKey":"$CallSignalReceived","$DataKey":{"$CallSignalSenderKey":"user@host","$CallSignalDataKey":"message"}}""", writtenText)
   }
 
   private def writeTextToSockets(text: String, webSocketIds: Iterable[String]): Unit = {

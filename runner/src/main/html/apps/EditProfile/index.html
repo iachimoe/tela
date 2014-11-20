@@ -1,9 +1,6 @@
 <!DOCTYPE html>
 <html>
 <script>
-    var JSON_LD_ID = "@id";
-    var JSON_LD_TYPE = "@type";
-    var JSON_LD_VALUE = "@value";
     var SCHEMA_ROOT = "http://schema.org/";
 
     var PROFILE_URN = "urn:tela:personalDetails";
@@ -14,29 +11,39 @@
     var DESCRIPTION = SCHEMA_ROOT + "description";
 
     function updateProfile() {
-        var client = new XMLHttpRequest();
-        client.open("PUT", "/data?uriToPublish=" + encodeURIComponent(PROFILE_URN));
-        client.setRequestHeader("Content-Type", "application/ld+json");
+        var values = {};
+        values[NAME] = document.getElementById("name").value;
+        values[JOB_TITLE] = document.getElementById("jobTitle").value;
+        values[EMAIL] = document.getElementById("email").value;
+        values[TELEPHONE] = document.getElementById("telephone").value;
+        values[DESCRIPTION] = document.getElementById("description").value;
 
-        var json = {};
-        json[JSON_LD_ID] = PROFILE_URN;
-        json[JSON_LD_TYPE] = [SCHEMA_ROOT + "Person"];
-        json[NAME] = createValue(document.getElementById("name").value);
-        json[JOB_TITLE] = createValue(document.getElementById("jobTitle").value);
-        json[EMAIL] = createValue(document.getElementById("email").value);
-        json[TELEPHONE] = createValue(document.getElementById("telephone").value);
-        json[DESCRIPTION] = createValue(document.getElementById("description").value);
+        var json = parent.createJsonLdObjectAsString(PROFILE_URN, SCHEMA_ROOT + "Person", values);
 
-        client.send(JSON.stringify([json]));
+        parent.makeRESTRequestWithData("/data?uriToPublish=" + encodeURIComponent(PROFILE_URN), "application/ld+json", json);
     }
 
-    function createValue(value) {
-        var result = {};
-        result[JSON_LD_VALUE] = value;
-        return [result];
+    function downloadOwnProfile() {
+        parent.makeRESTRequest("/data?uri=" + encodeURIComponent("urn:tela:personalDetails"), function (responseText) {
+            populateUserInfo(JSON.parse(responseText)[0]);
+        });
+    }
+
+    function populateUserInfo(info) {
+        var fields = ["name", "jobTitle", "email", "telephone", "description"];
+
+        for (var i = 0; i < fields.length; i++) {
+            populateField(fields[i], info);
+        }
+    }
+
+    function populateField(field, data) {
+        if (data != null && data[SCHEMA_ROOT + field]) {
+            document.getElementById(field).value = parent.getValueOfJsonLdField(data, SCHEMA_ROOT + field);
+        }
     }
 </script>
-<body>
+<body onload="downloadOwnProfile()">
 <label for="name">{{nameLabel}}</label><input id="name"/><br/>
 <label for="jobTitle">{{jobTitleLabel}}</label><input id="jobTitle"/><br/>
 <label for="email">{{emailLabel}}</label><input id="email"/><br/>

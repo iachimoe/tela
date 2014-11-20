@@ -5,6 +5,7 @@
         width: 10px;
         height: 10px;
         float: left;
+        margin-top: 4px;
     }
 </style>
 
@@ -26,19 +27,23 @@
             var message = JSON.parse(e.data);
             if (message["action"] === "addContacts") {
                 var contacts = message["data"];
-                contacts.forEach(function (item) {
-                    if (getContact(item["contact"]) == null) {
-                        var container = createContactNode(item["contact"]);
-                        document.getElementById("contacts").appendChild(container);
-                        changePresenceBubbleForContact(item["contact"], item["presence"]);
-                    }
-                });
+                displayAddedContacts(contacts);
             }
             else if (message["action"] === "presenceUpdate") {
                 var update = message["data"];
                 changePresenceBubbleForContact(update["contact"], update["presence"]);
             }
         }
+    }
+
+    function displayAddedContacts(contacts) {
+        contacts.forEach(function (item) {
+            if (getContact(item["contact"]) == null) {
+                var container = createContactNode(item["contact"]);
+                document.getElementById("contacts").appendChild(container);
+                changePresenceBubbleForContact(item["contact"], item["presence"]);
+            }
+        });
     }
 
     function changePresenceBubbleForContact(contact, presence) {
@@ -66,15 +71,24 @@
     function createContactNode(item) {
         var container = document.createElement("div");
         container.setAttribute("jid", item);
-        container.setAttribute("style", "position:relative");
-
         container.setAttribute("draggable", "true");
         container.setAttribute("ondragstart", "drag(event)");
 
+        addEventListeners(container, item);
+
+        var children = ["<div class='presenceBubble'></div>", "<span>&NonBreakingSpace;" + item + "</span>", "<br />", "<br />"];
+        for (var i = 0; i < children.length; i++) {
+            container.appendChild(createHtmlElementFromText(children[i]));
+        }
+
+        return container;
+    }
+
+    function addEventListeners(container, item) {
         container.addEventListener('touchmove', function (event) {
             event.preventDefault();
             if (event.targetTouches.length == 1) {
-                parent.childTouchDragMove(window, event.targetTouches[0], item);
+                parent.childTouchDragMove(window, event.targetTouches[0]);
             }
         }, false);
 
@@ -87,14 +101,8 @@
 
         container.addEventListener('touchend', function (event) {
             event.preventDefault();
-            parent.childTouchDragEnd(window, event.changedTouches[0], item);
+            parent.childTouchDragEnd(window, event.changedTouches[0]);
         }, false);
-
-        container.appendChild(createHtmlElementFromText("<div class='presenceBubble'></div>"));
-        container.appendChild(createHtmlElementFromText("<span>&NonBreakingSpace;" + item + "</span>"));
-        container.appendChild(createHtmlElementFromText("<br />"));
-        container.appendChild(createHtmlElementFromText("<br />"));
-        return container;
     }
 
     function createHtmlElementFromText(code) {

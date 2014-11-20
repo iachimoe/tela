@@ -3,28 +3,15 @@ package tela.web
 import java.io.File
 
 import akka.actor.ActorRef
-import akka.pattern.ask
 import org.mashupbots.socko.events.{HttpRequestEvent, HttpResponseStatus}
-import tela.web.SessionManager.GetSession
 
-import scala.concurrent.Await
-
-class AppHandler(private val appsRootDirectory: String, private val appName: String, private val sessionManager: ActorRef) extends RequestHandlerBase {
+class AppHandler(sessionManager: ActorRef, appsRootDirectory: String, appName: String) extends RequestHandlerBase(sessionManager) {
   override def receive: Receive = {
     case event: HttpRequestEvent =>
-      getSessionIdFromCookie(event.request) match {
-        case Some(sessionId) =>
-          implicit val timeout = ActorTimeout
-          val future = sessionManager ? GetSession(sessionId)
-          Await.result(future, timeout.duration).asInstanceOf[Option[UserData]] match {
-            case Some(userData) =>
-              log.info("User {} requesting app requesting app {}", userData.name, appName)
-              handleAppRequest(event, userData.language)
-            case None => sendResponseToUnauthorizedUser(event)
-          }
-        case None => sendResponseToUnauthorizedUser(event)
-      }
-
+      performActionOnValidSessionOrSendUnauthorizedError(event, (sessionId: String, userData: UserData) => {
+        log.info("User {} requesting app requesting app {}", userData.name, appName)
+        handleAppRequest(event, userData.language)
+      })
       context.stop(self)
   }
 

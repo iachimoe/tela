@@ -16,20 +16,15 @@ object JSONConversions {
   val SetLanguageAction = "setLanguage"
   val LanguagesKey = "languages"
   val SelectedLanguageKey = "selected"
+  val LanguageKey = "language"
 
   implicit val languageInfoWrites = new Writes[LanguageInfo] {
     def writes(languages: LanguageInfo) = Json.obj(
-      ActionKey -> SetLanguagesAction,
-      DataKey -> Json.obj(
-        LanguagesKey -> Json.toJsFieldJsValueWrapper(languages.languages),
-        SelectedLanguageKey -> languages.selected)
-    )
+      LanguagesKey -> Json.toJsFieldJsValueWrapper(languages.languages),
+      SelectedLanguageKey -> languages.selected)
   }
 
   // CHANGE PASSWORD
-  val ChangePasswordAction = "changePassword"
-  val ChangePasswordSucceeded = "changePasswordSucceeded"
-  val ChangePasswordFailed = "changePasswordFailed"
   val OldPasswordKey = "oldPassword"
   val NewPasswordKey = "newPassword"
 
@@ -64,6 +59,24 @@ object JSONConversions {
       DataKey -> Json.obj(
         ContactKey -> presenceUpdate.contact.jid,
         PresenceKey -> presenceUpdate.contact.presence.toString.toLowerCase)
+    )
+  }
+
+  val SendCallSignalAction = "sendCallSignal"
+  val CallSignalRecipientKey = "user"
+  val CallSignalDataKey = "data"
+
+  val CallSignalReceived = "callSignalReceived"
+  val CallSignalSenderKey = "user"
+
+  case class CallSignalReceipt(user: String, data: String)
+
+  implicit val callSignalReceiptWrites = new Writes[CallSignalReceipt] {
+    override def writes(callSignalReceipt: CallSignalReceipt) = Json.obj(
+      ActionKey -> CallSignalReceived,
+      DataKey -> Json.obj(
+        CallSignalSenderKey -> callSignalReceipt.user,
+        CallSignalDataKey -> callSignalReceipt.data)
     )
   }
 }

@@ -1,7 +1,6 @@
 package tela.web
 
 import akka.actor.{ActorRef, ActorSystem}
-import akka.pattern.ask
 import akka.testkit.TestActor.NoAutoPilot
 import akka.testkit.{TestActor, TestActorRef, TestProbe}
 import org.junit.Assert._
@@ -12,11 +11,9 @@ import org.mockito.stubbing.Answer
 import org.scalatest.junit.AssertionsForJUnit
 import org.scalatest.mock.MockitoSugar
 import tela.baseinterfaces._
-import tela.web.JSONConversions.{AddContacts, LanguageInfo, PresenceUpdate}
+import tela.web.JSONConversions.{AddContacts, CallSignalReceipt, LanguageInfo, PresenceUpdate}
 import tela.web.SessionManager._
 import tela.web.WebSocketDataPusher._
-
-import scala.concurrent.Await
 
 class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
   private val TestUsername = "myUser"
@@ -102,7 +99,7 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
     dataPusher.setAutoPilot(new TestActor.AutoPilot {
       def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
         msg match {
-          case CloseSockets(ids) =>
+          case CloseWebSockets(ids) =>
             closedWebSockets = ids
             NoAutoPilot
         }
@@ -151,57 +148,17 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
   @Test def getLanguages(): Unit = {
     val sessionManager = createSessionManager(Right(xmppSession))
 
-    var sentLanguages: LanguageInfo = null
-    var idsSentTo: Set[String] = null
-
-    dataPusher.setAutoPilot(new TestActor.AutoPilot {
-      def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
-        msg match {
-          case SendLanguages(languages, ids) =>
-            sentLanguages = languages
-            idsSentTo = ids
-            NoAutoPilot
-        }
-    })
-
     sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
 
-    val webSocketIds: Array[String] = Array("aaaaa", "bbbbb")
-    sessionManager ! RegisterWebSocket(TestSessionId, webSocketIds(0))
-    sessionManager ! RegisterWebSocket(TestSessionId, webSocketIds(1))
-
-    sessionManager ! GetLanguages(TestSessionId)
-
-    assertEquals(Languages, sentLanguages)
-    idsSentTo.zipAll(webSocketIds, null, null).foreach { (s) => assertEquals(s._1, s._2)}
+    assertEquals(Languages, sendMessageAndGetResponse[LanguageInfo](sessionManager, GetLanguages(TestSessionId)))
   }
 
   @Test def getLanguages_NonDefaultLanguage(): Unit = {
     val sessionManager = createSessionManager(Right(xmppSession))
 
-    var sentLanguages: LanguageInfo = null
-    var idsSentTo: Set[String] = null
-
-    dataPusher.setAutoPilot(new TestActor.AutoPilot {
-      def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
-        msg match {
-          case SendLanguages(languages, ids) =>
-            sentLanguages = languages
-            idsSentTo = ids
-            NoAutoPilot
-        }
-    })
-
     sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, "es"))
 
-    val webSocketIds: Array[String] = Array("aaaaa", "bbbbb")
-    sessionManager ! RegisterWebSocket(TestSessionId, webSocketIds(0))
-    sessionManager ! RegisterWebSocket(TestSessionId, webSocketIds(1))
-
-    sessionManager ! GetLanguages(TestSessionId)
-
-    assertEquals(new LanguageInfo(Languages.languages, "es"), sentLanguages)
-    idsSentTo.zipAll(webSocketIds, null, null).foreach { (s) => assertEquals(s._1, s._2)}
+    assertEquals(new LanguageInfo(Languages.languages, "es"), sendMessageAndGetResponse[LanguageInfo](sessionManager, GetLanguages(TestSessionId)))
   }
 
   @Test def deregisterWebSocket(): Unit = {
@@ -212,7 +169,7 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
     dataPusher.setAutoPilot(new TestActor.AutoPilot {
       def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
         msg match {
-          case CloseSockets(ids) =>
+          case CloseWebSockets(ids) =>
             closedWebSockets = ids
             NoAutoPilot
         }
@@ -238,51 +195,21 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
   @Test def changePassword(): Unit = {
     val sessionManager = createSessionManager(Right(xmppSession))
 
-    var successfulPasswordChangeNotificationReceived = false
-    val webSocketIds: Set[String] = Set("aaaaa", "bbbbb")
-
-    dataPusher.setAutoPilot(new TestActor.AutoPilot {
-      def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
-        msg match {
-          case SendChangePasswordResult(true, `webSocketIds`) =>
-            successfulPasswordChangeNotificationReceived = true
-            NoAutoPilot
-        }
-    })
-
     sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
 
-    webSocketIds.foreach(sessionManager ! RegisterWebSocket(TestSessionId, _))
-
     when(xmppSession.changePassword("oldPassword", "newPassword")).thenReturn(true)
-    sessionManager ! ChangePassword(TestSessionId, "oldPassword", "newPassword")
 
-    assertTrue(successfulPasswordChangeNotificationReceived)
+    assertTrue(sendMessageAndGetResponse[Boolean](sessionManager, ChangePassword(TestSessionId, "oldPassword", "newPassword")))
   }
 
   @Test def changePassword_Fail(): Unit = {
     val sessionManager = createSessionManager(Right(xmppSession))
 
-    var failedPasswordChangeNotificationReceived = false
-    val webSocketIds: Set[String] = Set("aaaaa", "bbbbb")
-
-    dataPusher.setAutoPilot(new TestActor.AutoPilot {
-      def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
-        msg match {
-          case SendChangePasswordResult(false, `webSocketIds`) =>
-            failedPasswordChangeNotificationReceived = true
-            NoAutoPilot
-        }
-    })
-
     sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
 
-    webSocketIds.foreach(sessionManager ! RegisterWebSocket(TestSessionId, _))
-
     when(xmppSession.changePassword("oldPassword", "newPassword")).thenReturn(false)
-    sessionManager ! ChangePassword(TestSessionId, "oldPassword", "newPassword")
 
-    assertTrue(failedPasswordChangeNotificationReceived)
+    assertFalse(sendMessageAndGetResponse[Boolean](sessionManager, ChangePassword(TestSessionId, "oldPassword", "newPassword")))
   }
 
   @Test def setPreferredLanguage(): Unit = {
@@ -306,7 +233,7 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
     dataPusher.setAutoPilot(new TestActor.AutoPilot {
       def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
         msg match {
-          case SendContactListInfo(AddContacts(List(ContactInfo("foo@bar.net", Presence.Available), ContactInfo("bar@foo.net", Presence.Away))), `webSocketIds`) =>
+          case PushContactListInfoToWebSockets(AddContacts(List(ContactInfo("foo@bar.net", Presence.Available), ContactInfo("bar@foo.net", Presence.Away))), `webSocketIds`) =>
             addContactsMessageSent = true
             NoAutoPilot
         }
@@ -336,7 +263,7 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
     dataPusher.setAutoPilot(new TestActor.AutoPilot {
       def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
         msg match {
-          case SendPresenceUpdate(PresenceUpdate(ContactInfo("foo@bar.net", Presence.Away)), `webSocketIds`) =>
+          case PushPresenceUpdateToWebSockets(PresenceUpdate(ContactInfo("foo@bar.net", Presence.Away)), `webSocketIds`) =>
             presenceUpdateSent = true
             NoAutoPilot
         }
@@ -396,6 +323,40 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
     assertEquals("[]", result)
   }
 
+  @Test def sendCallSignal(): Unit = {
+    val sessionManager = createSessionManager(Right(xmppSession))
+
+    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
+
+    sessionManager ! SendCallSignal(TestSessionId, "foo@bar.net", "my signal")
+
+    verify(xmppSession).sendCallSignal("foo@bar.net", "my signal")
+  }
+
+  @Test def callSignalReceived(): Unit = {
+    val sessionManager = createSessionManager(Right(xmppSession))
+
+    var callSignalReceived = false
+    val webSocketIds: Set[String] = Set("aaaaa", "bbbbb")
+
+    dataPusher.setAutoPilot(new TestActor.AutoPilot {
+      def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
+        msg match {
+          case PushCallSignalToWebSockets(CallSignalReceipt("foo@bar.net", "message"), `webSocketIds`) =>
+            callSignalReceived = true
+            NoAutoPilot
+        }
+    })
+
+    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
+
+    webSocketIds.foreach(sessionManager ! RegisterWebSocket(TestSessionId, _))
+
+    sessionListener.callSignalReceived("foo@bar.net", "message")
+
+    assertTrue(callSignalReceived)
+  }
+
   private def createSessionManager(result: Either[LoginFailure, XMPPSession]): TestActorRef[SessionManager] = {
     dataPusher = TestProbe()
 
@@ -411,11 +372,6 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
       dataStoreConnection
     },
       Languages.languages, TestXMPPSettings, dataPusher.ref, () => TestSessionId))
-  }
-
-  private def sendMessageAndGetResponse[ResponseType](actor: ActorRef, message: Any): ResponseType = {
-    implicit val timeout = ActorTimeout
-    Await.result(actor ? message, timeout.duration).asInstanceOf[ResponseType]
   }
 
   private def assertLoginWithTestCredentials(expectedResult: Either[LoginFailure, String], actualResult: Either[LoginFailure, String]) {

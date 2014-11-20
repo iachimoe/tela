@@ -80,9 +80,10 @@ object Tela {
 
     Routes({
       case HttpRequest(request) => request match {
-        case Path("/") => actorSystem.actorOf(Props(new MainPageHandler(LoginPageRoot, AppRoot + "/appIndex.json", sessionManager))) ! request
+        case Path("/") => actorSystem.actorOf(Props(new MainPageHandler(sessionManager, LoginPageRoot, AppRoot + "/appIndex.json"))) ! request
         case Path("/data") => actorSystem.actorOf(Props(new DataHandler(sessionManager))) ! request
-        case PathSegments("apps" :: relativePath :: theRest) => actorSystem.actorOf(Props(new AppHandler(AppRoot + "/apps", relativePath, sessionManager))) ! request
+        case PathSegments("settings" :: setting :: theRest) => actorSystem.actorOf(Props(new SettingsDataHandler(sessionManager, setting))) ! request
+        case PathSegments("apps" :: relativePath :: theRest) => actorSystem.actorOf(Props(new AppHandler(sessionManager, AppRoot + "/apps", relativePath))) ! request
         //case PathSegments("static" :: file :: Nil) => staticContentHandlerRouter ! new StaticFileRequest(request, new File("web/src/main/static", file))
         case _ => request.response.write(HttpResponseStatus.NOT_FOUND)
       }
@@ -94,7 +95,7 @@ object Tela {
               onClose = Some(onWebSocketClose(cookie.get)))
           }
       }
-      case WebSocketFrame(wsFrame) => actorSystem.actorOf(Props(new WebSocketFrameHandler(sessionManager, closeWebSocket))) ! wsFrame
+      case WebSocketFrame(wsFrame) => actorSystem.actorOf(Props(new WebSocketRequestHandler(sessionManager, closeWebSocket))) ! wsFrame
     })
   }
 

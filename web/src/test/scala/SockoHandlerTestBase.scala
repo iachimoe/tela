@@ -3,7 +3,8 @@ package tela.web
 import java.io.{FileReader, StringWriter}
 
 import akka.actor.{ActorRef, ActorSystem}
-import akka.testkit.TestProbe
+import akka.testkit.TestActor.{AutoPilot, KeepRunning, NoAutoPilot}
+import akka.testkit.{TestActor, TestProbe}
 import io.netty.buffer.Unpooled
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.http._
@@ -15,6 +16,7 @@ import org.mockito.Mockito._
 import org.scalatest.junit.AssertionsForJUnit
 import org.scalatest.mock.MockitoSugar
 import play.api.libs.json.Json
+import tela.web.SessionManager.GetSession
 
 import scala.collection.JavaConversions._
 import scala.io.Source
@@ -35,6 +37,27 @@ class SockoHandlerTestBase extends AssertionsForJUnit with MockitoSugar {
     actorSystem = ActorSystem("actor")
     handler = null
     sessionManagerProbe = TestProbe()
+  }
+
+  protected def initializeTestProbe(shouldReturnUserData: Boolean, expectedCases: ((ActorRef) => PartialFunction[Any, TestActor.AutoPilot])*): Unit = {
+    sessionManagerProbe.setAutoPilot(new TestActor.AutoPilot {
+      def run(sender: ActorRef, msg: Any): AutoPilot = {
+        val sessionRetriever: PartialFunction[Any, TestActor.AutoPilot] = {
+          case GetSession(TestSessionId) =>
+            if (shouldReturnUserData) {
+              sender ! Some(new UserData(TestUsername, DefaultLanguage))
+              KeepRunning
+            }
+            else {
+              sender ! None
+              NoAutoPilot
+            }
+        }
+
+        val allExpectedCases = sessionRetriever :: expectedCases.map(_(sender)).toList
+        allExpectedCases.filter(_.isDefinedAt(msg))(0).apply(msg)
+      }
+    })
   }
 
   protected def createHttpRequestEvent(httpMethod: HttpMethod, requestPath: String, headers: Map[String, String] = Map(), content: String = ""): HttpRequestEvent = {

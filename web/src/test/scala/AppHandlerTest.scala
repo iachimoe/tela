@@ -51,7 +51,7 @@ class AppHandlerTest extends SockoHandlerTestBase {
   //TODO dodgy path test
 
   private def initialiseTestActorAndProbe(appName: String, userData: Option[UserData]): Unit = {
-    handler = TestActorRef(new AppHandler(TestAppDirectory, appName, sessionManagerProbe.ref))
+    handler = TestActorRef(new AppHandler(sessionManagerProbe.ref, TestAppDirectory, appName))
 
     sessionManagerProbe.setAutoPilot(new TestActor.AutoPilot {
       def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =

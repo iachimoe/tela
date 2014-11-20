@@ -3,7 +3,7 @@ package tela.web
 import java.util.Date
 
 import akka.actor.ActorRef
-import akka.testkit.TestActor.{AutoPilot, KeepRunning, NoAutoPilot}
+import akka.testkit.TestActor.NoAutoPilot
 import akka.testkit.{TestActor, TestActorRef}
 import io.netty.channel.Channel
 import io.netty.handler.codec.http._
@@ -18,7 +18,7 @@ import tela.web.JSONConversions._
 import tela.web.SessionManager._
 
 
-class WebSocketFrameHandlerTest extends SockoHandlerTestBase {
+class WebSocketRequestHandlerTest extends SockoHandlerTestBase {
   private val TestWebSocketId = "wsid"
 
   private var closedWebSocket: String = null
@@ -48,9 +48,10 @@ class WebSocketFrameHandlerTest extends SockoHandlerTestBase {
   @Test def setPresence(): Unit = {
     var presenceSetByWebSocketHandler: Presence = null
 
-    initialiseTestActorAndProbe(true, { case SetPresence(TestSessionId, presence) =>
-      presenceSetByWebSocketHandler = presence
-      NoAutoPilot
+    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+      case SetPresence(TestSessionId, presence) =>
+        presenceSetByWebSocketHandler = presence
+        NoAutoPilot
     })
 
     handler ! createWebSocketRequestEvent( s"""{"$ActionKey": "$SetPresenceAction", "$DataKey": "${Presence.Available.toString.toLowerCase}"}""")
@@ -59,50 +60,13 @@ class WebSocketFrameHandlerTest extends SockoHandlerTestBase {
     assertNull(TestWebSocketId, closedWebSocket)
   }
 
-  @Test def getLanguages(): Unit = {
-    var getLanguagesCalledOnSessionManager = false
-
-    initialiseTestActorAndProbe(true, { case GetLanguages(TestSessionId) =>
-      getLanguagesCalledOnSessionManager = true
-      NoAutoPilot
-    })
-
-    handler ! createWebSocketRequestEvent( s"""{"$ActionKey": "$GetLanguagesAction"}""")
-
-    assertTrue(getLanguagesCalledOnSessionManager)
-  }
-
-  @Test def changePassword(): Unit = {
-    var changePasswordCalled = false
-
-    initialiseTestActorAndProbe(true, { case ChangePassword(TestSessionId, "old", "new") =>
-      changePasswordCalled = true
-      NoAutoPilot
-    })
-
-    handler ! createWebSocketRequestEvent( s"""{"$ActionKey": "$ChangePasswordAction", "$DataKey": {"$OldPasswordKey": "old", "$NewPasswordKey": "new"}}""")
-    assertTrue(changePasswordCalled)
-  }
-
-  @Test def setLanguage(): Unit = {
-    var languageChanged = false
-
-    initialiseTestActorAndProbe(true, { case SetLanguage(TestSessionId, "es") =>
-      languageChanged = true
-      NoAutoPilot
-    })
-
-    handler ! createWebSocketRequestEvent( s"""{"$ActionKey": "$SetLanguageAction", "$DataKey": "es"}""")
-
-    assertTrue(languageChanged)
-  }
-
   @Test def getContactList(): Unit = {
     var getContactListCalled = false
 
-    initialiseTestActorAndProbe(true, { case GetContactList(TestSessionId) =>
-      getContactListCalled = true
-      NoAutoPilot
+    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+      case GetContactList(TestSessionId) =>
+        getContactListCalled = true
+        NoAutoPilot
     })
 
     handler ! createWebSocketRequestEvent( s"""{"$ActionKey": "$GetContactListAction"}""")
@@ -112,36 +76,34 @@ class WebSocketFrameHandlerTest extends SockoHandlerTestBase {
   @Test def addContact(): Unit = {
     var addContactCalled = false
 
-    initialiseTestActorAndProbe(true, { case AddContact(TestSessionId, "foo@bar.net") =>
-      addContactCalled = true
-      NoAutoPilot
+    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+      case AddContact(TestSessionId, "foo@bar.net") =>
+        addContactCalled = true
+        NoAutoPilot
     })
 
     handler ! createWebSocketRequestEvent( s"""{"$ActionKey": "$AddContactAction", "$DataKey": "foo@bar.net"}""")
     assertTrue(addContactCalled)
   }
 
-  private def initialiseTestActorAndProbe(shouldReturnUserData: Boolean, expectedCases: PartialFunction[Any, TestActor.AutoPilot]*): Unit = {
-    handler = TestActorRef(new WebSocketFrameHandler(sessionManagerProbe.ref, closeWebSocket))
+  @Test def sendCallSignal(): Unit = {
+    val testSignal = """{"type":"offer","sdp":"v=0"}"""
 
-    sessionManagerProbe.setAutoPilot(new TestActor.AutoPilot {
-      def run(sender: ActorRef, msg: Any): AutoPilot = {
-        val sessionRetriever: PartialFunction[Any, TestActor.AutoPilot] = {
-          case GetSession(TestSessionId) =>
-            if (shouldReturnUserData) {
-              sender ! Some(new UserData(TestUsername, DefaultLanguage))
-              KeepRunning
-            }
-            else {
-              sender ! None
-              NoAutoPilot
-            }
-        }
+    var sendCallSignalCalled = false
 
-        val allExpectedCases = sessionRetriever :: expectedCases.toList
-        allExpectedCases.filter(_.isDefinedAt(msg))(0).apply(msg)
-      }
+    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+      case SendCallSignal(TestSessionId, "foo@bar.net", `testSignal`) =>
+        sendCallSignalCalled = true
+        NoAutoPilot
     })
+
+    handler ! createWebSocketRequestEvent( s"""{"$ActionKey": "$SendCallSignalAction", "$DataKey": {"$CallSignalRecipientKey": "foo@bar.net", "$CallSignalDataKey": $testSignal}}""")
+    assertTrue(sendCallSignalCalled)
+  }
+
+  private def initialiseTestActorAndProbe(shouldReturnUserData: Boolean, expectedCases: ((ActorRef) => PartialFunction[Any, TestActor.AutoPilot])*): Unit = {
+    handler = TestActorRef(new WebSocketRequestHandler(sessionManagerProbe.ref, closeWebSocket))
+    initializeTestProbe(shouldReturnUserData, expectedCases: _*)
   }
 
   private def closeWebSocket(webSocketId: String): Unit = {

@@ -1,11 +1,16 @@
 package tela.xmpp
 
+import java.io.StringReader
+
 import org.jivesoftware.smack.SmackException.ConnectionException
 import org.jivesoftware.smack._
-import org.jivesoftware.smack.filter.PacketIDFilter
+import org.jivesoftware.smack.filter.{PacketFilter, PacketIDFilter}
+import org.jivesoftware.smack.packet.IQ.Type
 import org.jivesoftware.smack.packet.{IQ, Presence, RosterPacket}
+import org.jivesoftware.smack.provider.ProviderManager
 import org.jivesoftware.smack.sasl.packet.SaslStreamElements.SASLFailure
 import org.jivesoftware.smack.sasl.{SASLError, SASLErrorException}
+import org.jivesoftware.smack.util.PacketParserUtils
 import org.jivesoftware.smackx.iqregister.packet.Registration
 import org.junit.Assert._
 import org.junit.{Before, Test}
@@ -15,8 +20,10 @@ import org.mockito.{ArgumentCaptor, ArgumentMatcher}
 import org.scalatest.junit.AssertionsForJUnit
 import org.scalatest.mock.MockitoSugar
 import tela.baseinterfaces._
+import tela.xmpp.SmackXMPPSession.CallSignal
 
 import scala.collection.JavaConversions._
+import scala.xml.{Utility, XML}
 
 class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
   private val SmackUsernameKey = "username"
@@ -28,6 +35,10 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
   private val TestResource = "res"
   private val TestBareJid = TestUsername + "@" + TestDomain
   private val TestFullJid = TestBareJid + "/" + TestResource
+  private val TestCallSignalData = "test data"
+  private val RawTestCallSignalPacket = <callSignal xmlns={SmackXMPPSession.TelaURN}>
+    {TestCallSignalData}
+  </callSignal>.toString()
 
   private var connection: TestableXMPPConnection = null
   private var roster: Roster = null
@@ -194,6 +205,64 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
       ContactInfo("bar@foo.net", tela.baseinterfaces.Presence.DoNotDisturb)))
   }
 
+  @Test def callSignalPacket(): Unit = {
+    val callSignal = new CallSignal(TestCallSignalData)
+
+    assertTrue(new IQPacketMatcher(new IQ() {
+      override def getChildElementXML: CharSequence = RawTestCallSignalPacket
+    }).matches(callSignal))
+  }
+
+  @Test def sendCallSignal(): Unit = {
+    val session = connectToServerAndGetSession
+    session.sendCallSignal(TestBareJid, TestCallSignalData)
+    val signal: CallSignal = createCallSignal(TestCallSignalData, TestBareJid + "/" + SmackXMPPSession.DefaultResourceName, Type.set)
+    verify(connection).sendPacket(argThat(new IQPacketMatcher(signal)))
+  }
+
+  @Test def sendCallSignal_FullJID(): Unit = {
+    val session = connectToServerAndGetSession
+    session.sendCallSignal(TestBareJid + "/" + SmackXMPPSession.DefaultResourceName, TestCallSignalData)
+    val signal: CallSignal = createCallSignal(TestCallSignalData, TestBareJid + "/" + SmackXMPPSession.DefaultResourceName, Type.set)
+    verify(connection).sendPacket(argThat(new IQPacketMatcher(signal)))
+  }
+
+  @Test def callSignalPacketListener(): Unit = {
+    connectToServer
+    val packetListenerCaptor: ArgumentCaptor[PacketListener] = ArgumentCaptor.forClass(classOf[PacketListener])
+    val packetFilterCaptor: ArgumentCaptor[PacketFilter] = ArgumentCaptor.forClass(classOf[PacketFilter])
+    verify(connection).addPacketListener(packetListenerCaptor.capture(), packetFilterCaptor.capture())
+
+    val signal: CallSignal = createCallSignal(TestCallSignalData, TestBareJid + "/" + SmackXMPPSession.DefaultResourceName, Type.set)
+    assertTrue(packetFilterCaptor.getValue.accept(signal))
+
+    assertFalse(packetFilterCaptor.getValue.accept(new IQ() {
+      override def getChildElementXML: CharSequence = {
+        "not a call signal packet"
+      }
+    }))
+
+    signal.setFrom(TestBareJid)
+    packetListenerCaptor.getValue.processPacket(signal)
+
+    verify(sessionListener).callSignalReceived(TestBareJid, TestCallSignalData)
+  }
+
+  @Test def callSignalProvider(): Unit = {
+    val provider = ProviderManager.getIQProvider("callSignal", SmackXMPPSession.TelaURN)
+    val xmlParser = PacketParserUtils.newXmppParser()
+    xmlParser.setInput(new StringReader(RawTestCallSignalPacket))
+    xmlParser.nextToken() //simulates the state of the parser when it gets passed to the provider in production
+    assertTrue(new IQPacketMatcher(new CallSignal(TestCallSignalData)).matches(provider.parse(xmlParser)))
+  }
+
+  private def createCallSignal(data: String, to: String, iqType: Type): CallSignal = {
+    val result = new CallSignal(data)
+    result.setTo(to)
+    result.setType(iqType)
+    result
+  }
+
   private abstract class TestableXMPPConnection extends AbstractXMPPConnection(new ConnectionConfiguration("")) {
     def setUser(username: String): Unit = {
       user = username
@@ -219,6 +288,17 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
       constructor.setAccessible(true)
       constructor.newInstance(jid, "nickname", RosterPacket.ItemType.both, RosterPacket.ItemStatus.subscribe, null, null).asInstanceOf[RosterEntry]
     }))
+  }
+
+  private class IQPacketMatcher(private val expected: IQ) extends ArgumentMatcher[IQ] {
+    override def matches(argument: scala.Any): Boolean = {
+      argument match {
+        case actual: IQ =>
+          expected.getTo == actual.getTo && expected.getType == actual.getType &&
+            Utility.trim(XML.loadString(expected.getChildElementXML.toString)) == Utility.trim(XML.loadString(actual.getChildElementXML.toString))
+        case _ => false
+      }
+    }
   }
 
   private class RegistrationMatcher(private val expected: Registration) extends ArgumentMatcher[Registration] {

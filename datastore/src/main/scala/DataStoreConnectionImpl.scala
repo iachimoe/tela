@@ -21,8 +21,6 @@ object DataStoreConnectionImpl {
   def getDataStore(rootDirectory: String, user: String, xmppSession: XMPPSession): DataStoreConnectionImpl = {
     log.info("Retrieving data store for user {}", user)
 
-    //if (rootDirectory.isEmpty)
-
     val file: File = new File(rootDirectory)
     if (!file.isDirectory) {
       throw new IllegalArgumentException("Directory " + rootDirectory + " not found")

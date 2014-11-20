@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<script>
+    var RTCPeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
+    navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
+    var RTCSessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
+    var isChrome = !!navigator.webkitGetUserMedia;
+
+    function videoCallSupport() {
+        return RTCPeerConnection && navigator.getUserMedia && RTCSessionDescription;
+    }
+
+    // BEGIN DRAG/DROP
+    function allowDrop(event) {
+        event.preventDefault();
+    }
+
+    function drop(event) {
+        event.preventDefault();
+        if (videoCallSupport()) {
+            callUser(event.dataTransfer.getData("text"));
+        }
+        else {
+            handleNoWebRTCSupport();
+        }
+    }
+
+    function handleDrop(item) {
+        if (videoCallSupport()) {
+            userToCallOnOpen = item;
+            establishConnection();
+        }
+        else {
+            handleNoWebRTCSupport();
+        }
+    }
+
+    function nothingToDrop() {
+        if (videoCallSupport()) {
+            establishConnection();
+        }
+        else {
+            handleNoWebRTCSupport();
+        }
+    }
+    // END DRAG/DROP
+
+    // BEGIN WEBSOCKET
+
+    var connection = null;
+    var userToCallOnOpen = null;
+
+    function establishConnection() {
+        connection = new WebSocket('ws://' + window.location.host + '/events');
+
+        connection.onopen = function () {
+            if (userToCallOnOpen != null) {
+                callUser(userToCallOnOpen);
+                userToCallOnOpen = null;
+            }
+        };
+
+        connection.onclose = function () {
+        };
+
+        connection.onmessage = function (e) {
+            var message = JSON.parse(e.data);
+            if (message["action"] === "callSignalReceived") {
+                var user = message["data"]["user"];
+                var data = JSON.parse(message["data"]["data"].trim());
+
+                if (initiatedConnection) {
+                    handleConfirmationOfCall(data);
+                }
+                else {
+                    receiveCall(user, data);
+                }
+            }
+        };
+    }
+
+    function sendMessage(msg, recipient) {
+        var json = {"action": "sendCallSignal", "data": {"user": recipient, "data": msg}};
+        connection.send(JSON.stringify(json));
+    }
+
+    // END WEBSOCKET
+
+    // BEGIN WEBRTC
+
+    var peerConnection = null;
+    var initiatedConnection = false;
+
+    function error(err) {
+        alert('oe the humanity!');
+    }
+
+    function callUser(user) {
+        startCall(function (peerConnection) {
+            peerConnection.createOffer(function (offer) {
+                peerConnection.setLocalDescription(new RTCSessionDescription(offer), function () {
+                    initiatedConnection = true;
+                    sendMessage(offer, user);
+                }, error);
+            }, error);
+        });
+    }
+
+    function receiveCall(user, offer) {
+        startCall(function (peerConnection) {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(offer), function () {}, error);
+            peerConnection.createAnswer(function (answer) {
+                peerConnection.setLocalDescription(new RTCSessionDescription(answer), function () {
+                    sendMessage(answer, user)
+                }, error);
+            }, error);
+        });
+
+    }
+
+    function startCall(createOfferOrAnswer) {
+        if (isChrome)
+            peerConnection = new RTCPeerConnection({
+                iceServers: [
+                    {url: 'stun:stun.l.google.com:19302'}
+                ]
+            });
+        else
+            peerConnection = new RTCPeerConnection();
+
+        navigator.getUserMedia(getAudioVideoStatus(), function (stream) {
+            peerConnection.onaddstream = function (event) {
+                handleBeginningOfCall(event.stream, stream);
+            };
+
+            peerConnection.oniceconnectionstatechange = function () {
+                if (peerConnection.iceConnectionState == 'disconnected' || peerConnection.iceConnectionState == 'closed') {
+                    stream.stop();
+                    handleEndOfCall();
+                }
+            };
+
+            // Adding a local stream won't trigger the onaddstream callback
+            peerConnection.addStream(stream);
+
+            createOfferOrAnswer(peerConnection);
+        }, error);
+    }
+
+    function handleConfirmationOfCall(offer) {
+        peerConnection.setRemoteDescription(new RTCSessionDescription(offer), function () {
+        }, error);
+    }
+
+    function endCall() {
+        peerConnection.close();
+    }
+
+    function getAudioVideoStatus() {
+        if (isAudioOnly()) {
+            return {
+                audio: true
+            }
+        }
+        else {
+            return {
+                audio: true, video: true
+            }
+        }
+    }
+
+    function isAudioOnly() {
+        return document.getElementById("audioOnly").checked;
+    }
+
+    // END WEBRTC
+
+    function handleNoWebRTCSupport() {
+        document.getElementById("errorMessage").style.display = "block";
+        document.getElementById("controlPanel").style.visibility = "hidden";
+    }
+
+    function handleBeginningOfCall(stream, localStream) {
+        document.getElementById("endCallButton").style.visibility = "visible";
+        showVideoElements();
+        playVideo("remoteVideo", stream);
+
+        if (!isAudioOnly()) {
+            playVideo("localVideo", localStream);
+        }
+    }
+
+    function playVideo(elementName, stream) {
+        var video = document.getElementById(elementName);
+        video.src = URL.createObjectURL(stream);
+        video.play();
+    }
+
+    function handleEndOfCall() {
+        document.getElementById("endCallButton").style.visibility = "hidden";
+        document.getElementById("videoContainer").style.visibility = "hidden";
+    }
+
+    function showVideoElements() {
+        if (parent.fullSizedScreen()) {
+            setDimensionsOfRemoteVideo(640, 480);
+
+        } else {
+            setDimensionsOfRemoteVideo(285, 285);
+        }
+        document.getElementById("videoContainer").style.visibility = "visible";
+    }
+
+    function setDimensionsOfRemoteVideo(width, height) {
+        var videoContainer = document.getElementById("videoContainer");
+        videoContainer.style.width = width + "px";
+        videoContainer.style.height = height + "px";
+
+        var video = document.getElementById("remoteVideo");
+        video.style.width = width + "px";
+        video.style.height = height + "px";
+    }
+</script>
+
+<style>
+    #remoteVideo {
+        top:0px;
+        right:0px;
+        position:relative;
+    }
+
+    #localVideo {
+        width:100px;
+        height:100px;
+        z-index:999;
+        position:absolute;
+        bottom:0px;
+        right:0px;
+    }
+
+    #videoContainer {
+        position:relative
+    }
+</style>
+<body ondrop="drop(event)" ondragover="allowDrop(event)" onload="parent.childFrameLoaded(window)">
+<div id="errorMessage" style="display:none">{{unsupportedBrowserError}}</div>
+<div id="controlPanel">
+    <input type="checkbox" id="audioOnly"/><label for="audioOnly">{{audioOnly}}</label>
+    <button id="endCallButton" style="visibility:hidden" onclick="endCall()">{{hangUp}}</button>
+</div>
+
+<div id="videoContainer" style="visibility:hidden">
+    <video id="remoteVideo" ></video>
+    <video id="localVideo"></video>
+</div>
+</body>
+</html>
