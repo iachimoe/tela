@@ -77,7 +77,7 @@ object Tela {
   }
 
   private def configureWebServerRoutes(actorSystem: ActorSystem): PartialFunction[SockoEvent, Unit] = {
-    val staticContentHandlerRouter = actorSystem.actorOf(Props(new StaticContentHandler(new StaticContentHandlerConfig(rootFilePaths = Seq("/Users/will/dev/tela/web/src/main/static")))))
+    val staticContentHandlerRouter = actorSystem.actorOf(Props(new StaticContentHandler(new StaticContentHandlerConfig(rootFilePaths = Seq("web/src/main/static")))))
 
     Routes({
       case HttpRequest(request) => request match {
