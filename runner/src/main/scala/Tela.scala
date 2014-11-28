@@ -22,6 +22,7 @@ import scala.io.Source
 object Tela {
   private val AppRoot = "runner/src/main/html"
   private val LoginPageRoot = "web/src/main/html"
+  private val StaticContentRoot = "web/src/main/static"
 
   private val ConfigFileName = "tela.conf"
   private val WebServerConfigKey = "web-server-config"
@@ -77,7 +78,7 @@ object Tela {
   }
 
   private def configureWebServerRoutes(actorSystem: ActorSystem): PartialFunction[SockoEvent, Unit] = {
-    val staticContentHandlerRouter = actorSystem.actorOf(Props(new StaticContentHandler(new StaticContentHandlerConfig(rootFilePaths = Seq("web/src/main/static")))))
+    val staticContentHandlerRouter = actorSystem.actorOf(Props(new StaticContentHandler(new StaticContentHandlerConfig(rootFilePaths = Seq(new File(StaticContentRoot).getAbsolutePath)))))
 
     Routes({
       case HttpRequest(request) => request match {
@@ -85,7 +86,7 @@ object Tela {
         case Path("/data") => actorSystem.actorOf(Props(new DataHandler(sessionManager))) ! request
         case PathSegments("settings" :: setting :: theRest) => actorSystem.actorOf(Props(new SettingsDataHandler(sessionManager, setting))) ! request
         case PathSegments("apps" :: relativePath :: theRest) => actorSystem.actorOf(Props(new AppHandler(sessionManager, AppRoot + "/apps", relativePath))) ! request
-        case PathSegments("static" :: path) => staticContentHandlerRouter ! new StaticFileRequest(request, new File("web/src/main/static", path.foldLeft("")((a, b) => a + "/" + b)))
+        case PathSegments("static" :: path) => staticContentHandlerRouter ! new StaticFileRequest(request, new File(StaticContentRoot, path.foldLeft("")((a, b) => a + "/" + b)))
         case _ => request.response.write(HttpResponseStatus.NOT_FOUND)
       }
       case WebSocketHandshake(wsHandshake) => wsHandshake match {
