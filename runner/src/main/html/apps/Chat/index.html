@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html>
+<style>
+    html, body {
+        height: 100%;
+    }
+
+    .localMessage, .remoteMessage {
+        max-width: 80%;
+        clear: both;
+        border-radius: 10px;
+        border: 1px solid black;
+        margin: 5px;
+        padding: 2px;
+    }
+
+    .localMessage {
+        float: right;
+    }
+
+    .remoteMessage {
+        float: left;
+    }
+
+    .conversationTab {
+        padding: 4px;
+        float: right;
+        border: 1px solid black;
+        border-top: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .content {
+        height: 80%;
+        overflow-y: auto
+    }
+
+    .inputPanel {
+        border-top: 1px solid black;
+    }
+
+    .scribe {
+        height: 60px;
+        overflow: auto;
+        box-sizing: border-box;
+        margin-top: 10px;
+        margin-left: 5px;
+        border: 1px solid black;
+    }
+
+    .controlButton {
+        margin-top: 5px;
+    }
+
+    .chatControlButtonContainer {
+        float: right;
+    }
+
+    .formattingButton {
+        margin-left: 3px;
+    }
+
+    .formattingButton.active {
+        border-style: inset;
+    }
+
+    .chat {
+        height: 100%;
+        overflow: hidden;
+        display: none
+    }
+
+    #chatPane {
+        width: 95%;
+        height: 90%;
+        border: 1px solid black;
+    }
+</style>
+
+<script src="/static/bower_components/requirejs/require.js"></script>
+
+<script>
+    // BEGIN WEBSOCKET
+
+    var connection = null;
+
+    function establishConnection() {
+        connection = new WebSocket('ws://' + window.location.host + '/events');
+
+        connection.onmessage = function (e) {
+            var message = JSON.parse(e.data);
+            if (message["action"] === "chatMessageReceived") {
+                handleIncomingMessage(message["data"]["user"], message["data"]["message"]);
+            }
+        };
+    }
+
+    function sendMessageToUser(data, recipient) {
+        var json = {"action": "sendChatMessage", "data": {"user": recipient, "message": data}};
+        connection.send(JSON.stringify(json));
+    }
+
+    // BEGIN DRAG/DROP
+    function allowDrop(event) {
+        event.preventDefault();
+    }
+
+    function drop(event) {
+        event.preventDefault();
+        handleDropToStartChat(event.dataTransfer.getData("text"));
+    }
+
+    function handleTouchDrop(item) {
+        handleDropToStartChat(item);
+    }
+
+    // BEGIN UI
+
+    var Scribe = null;
+    var scribePluginToolbar = null;
+
+    require({
+                paths: {
+                    'scribe': '/static/bower_components/scribe/scribe',
+                    'scribe-plugin-toolbar': '/static/bower_components/scribe-plugin-toolbar/scribe-plugin-toolbar'
+                }
+            }, ['scribe', 'scribe-plugin-toolbar'],
+            function (localScribe, localScribePluginToolbar) {
+                Scribe = localScribe;
+                scribePluginToolbar = localScribePluginToolbar;
+            });
+
+    function addTextToChatPanel(user, text, className) {
+        var message = createElementWithClass("div", className);
+        message.innerHTML = text;
+
+        var chatContent = getChatPanelForUser(user).querySelector(".content");
+        chatContent.appendChild(message);
+        chatContent.scrollTop = chatContent.scrollHeight;
+    }
+
+    function sendMessage(user) {
+        if (getScribeForUser(user).getTextContent() != "") {
+            var message = getScribeForUser(user).getHTML();
+            getScribeForUser(user).setHTML("");
+            addTextToChatPanel(user, message, "localMessage");
+            sendMessageToUser(message, user);
+        }
+    }
+
+    function createChatPanel(user) {
+        var container = createElementWithClass("div", "chat");
+        var content = createElementWithClass("div", "content");
+        container.appendChild(content);
+
+        var userLabel = document.createElement("div");
+        userLabel.innerHTML = user;
+        content.appendChild(userLabel);
+
+        var inputPanel = createElementWithClass("div", "inputPanel");
+        var toolbar = createElementWithClass("div", "toolbar");
+        var boldButton = createFormattingButton("bold", "{{bold}}");
+        var italicButton = createFormattingButton("italic", "{{italic}}");
+        toolbar.appendChild(boldButton);
+        toolbar.appendChild(italicButton);
+
+        var scribeElement = createElementWithClass("div", "scribe");
+
+        var enterButton = createElementWithClass("button", "controlButton");
+        enterButton.innerHTML = "{{enter}}";
+        enterButton.onclick = function () {
+            sendMessage(user);
+        };
+
+        var closeButton = createElementWithClass("button", "controlButton");
+        closeButton.innerHTML = "{{close}}";
+        closeButton.onclick = function () {
+            closeChat(user);
+        };
+
+        var chatControlButtonContainer = createElementWithClass("div", "chatControlButtonContainer");
+        chatControlButtonContainer.appendChild(enterButton);
+        chatControlButtonContainer.appendChild(document.createElement("br"));
+        chatControlButtonContainer.appendChild(closeButton);
+
+        inputPanel.appendChild(toolbar);
+        inputPanel.appendChild(chatControlButtonContainer);
+        inputPanel.appendChild(scribeElement);
+        container.appendChild(inputPanel);
+
+        return container;
+    }
+
+    function createFormattingButton(type, text) {
+        var button = createElementWithClass("button", "formattingButton");
+        button.setAttribute("data-command-name", type);
+        button.innerHTML = text;
+        return button;
+    }
+
+    function createElementWithClass(tagName, className) {
+        var div = document.createElement(tagName);
+        div.className = className;
+        return div;
+    }
+
+    var foregroundChatUsername = null;
+    var chats = {};
+
+    function closeChat(user) {
+        document.getElementById("chatPane").removeChild(getChatPanelForUser(user));
+        document.getElementById("tabs").removeChild(getChatTabForUser(user));
+
+        delete chats[user];
+
+        if (foregroundChatUsername == user) {
+            foregroundChatUsername = null;
+            var remainingChats = Object.keys(chats);
+            if (remainingChats.length > 0) {
+                switchToChat(remainingChats[0]);
+            }
+        }
+    }
+
+    function createNewChat(user) {
+        var container = createChatPanel(user);
+
+        var s = new Scribe(container.querySelector(".scribe"), {allowBlockElements: true});
+        s.use(scribePluginToolbar(container.querySelector(".toolbar")));
+
+        var tab = createElementWithClass("span", "conversationTab");
+        tab.innerHTML = user;
+        tab.onmouseup = function () {
+            switchToChat(user);
+        };
+        if (!parent.fullSizedScreen()) {
+            tab.style.maxWidth = "25%";
+        }
+
+        document.getElementById("chatPane").appendChild(container);
+        document.getElementById("tabs").appendChild(tab);
+
+        addChatToList(user, s, container, tab);
+
+        if (foregroundChatUsername == null) {
+            switchToChat(user);
+        }
+    }
+
+    function switchToChat(user) {
+        if (foregroundChatUsername != null) {
+            getChatPanelForUser(foregroundChatUsername).style.display = "none";
+        }
+
+        getChatPanelForUser(user).style.display = "block";
+        getChatTabForUser(user).style.background = "transparent";
+        foregroundChatUsername = user;
+    }
+
+    function handleIncomingMessage(user, message) {
+        if (!chatWithUserExists(user)) {
+            createNewChat(user);
+        }
+        addTextToChatPanel(user, message, "remoteMessage");
+
+        if (foregroundChatUsername != user) {
+            getChatTabForUser(user).style.background = "deepskyblue";
+        }
+    }
+
+    function handleDropToStartChat(user) {
+        if (!chatWithUserExists(user)) {
+            createNewChat(user);
+        }
+        switchToChat(user);
+    }
+
+    function chatWithUserExists(user) {
+        return chats[user] != null
+    }
+
+    function getScribeForUser(user) {
+        return chats[user]["scribe"];
+    }
+
+    function getChatPanelForUser(user) {
+        return chats[user]["panel"];
+    }
+
+    function getChatTabForUser(user) {
+        return chats[user]["tab"];
+    }
+
+    function addChatToList(user, scribe, panel, tab) {
+        chats[user] = {
+            "scribe": scribe,
+            "panel": panel,
+            "tab": tab
+        }
+    }
+</script>
+
+<body ondrop="drop(event)" ondragover="allowDrop(event)" onload="establishConnection()">
+<div id="chatPane">
+</div>
+<div id="tabs" style="width:95%">
+</div>
+</body>
+</html>

@@ -15,6 +15,8 @@ object WebSocketDataPusher {
 
   case class PushCallSignalToWebSockets(callSignalReceipt: CallSignalReceipt, ids: Set[String])
 
+  case class PushChatMessageToWebSockets(chatMessageReceipt: ChatMessageReceipt, ids: Set[String])
+
 }
 
 class WebSocketDataPusher(sendInformationToWebSockets: (String, Iterable[String]) => Unit,
@@ -24,5 +26,6 @@ class WebSocketDataPusher(sendInformationToWebSockets: (String, Iterable[String]
     case PushContactListInfoToWebSockets(contacts, ids) => sendInformationToWebSockets(Json.stringify(Json.toJson(contacts)), ids)
     case PushPresenceUpdateToWebSockets(presenceUpdate, ids) => sendInformationToWebSockets(Json.stringify(Json.toJson(presenceUpdate)), ids)
     case PushCallSignalToWebSockets(callSignalReceipt, ids) => sendInformationToWebSockets(Json.stringify(Json.toJson(callSignalReceipt)), ids)
+    case PushChatMessageToWebSockets(chatMessageReceipt, ids) => sendInformationToWebSockets(Json.stringify(Json.toJson(chatMessageReceipt)), ids)
   }
 }

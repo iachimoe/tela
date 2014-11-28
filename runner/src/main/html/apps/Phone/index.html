@@ -20,48 +20,28 @@
         if (videoCallSupport()) {
             callUser(event.dataTransfer.getData("text"));
         }
-        else {
-            handleNoWebRTCSupport();
+    }
+
+    function handleTouchDrop(item) {
+        if (videoCallSupport()) {
+            callUser(item);
         }
     }
 
-    function handleDrop(item) {
-        if (videoCallSupport()) {
-            userToCallOnOpen = item;
-            establishConnection();
-        }
-        else {
-            handleNoWebRTCSupport();
-        }
-    }
-
-    function nothingToDrop() {
-        if (videoCallSupport()) {
-            establishConnection();
-        }
-        else {
-            handleNoWebRTCSupport();
-        }
-    }
     // END DRAG/DROP
 
     // BEGIN WEBSOCKET
 
     var connection = null;
-    var userToCallOnOpen = null;
 
     function establishConnection() {
+        if (!videoCallSupport()) {
+            document.getElementById("errorMessage").style.display = "block";
+            document.getElementById("controlPanel").style.visibility = "hidden";
+            return;
+        }
+
         connection = new WebSocket('ws://' + window.location.host + '/events');
-
-        connection.onopen = function () {
-            if (userToCallOnOpen != null) {
-                callUser(userToCallOnOpen);
-                userToCallOnOpen = null;
-            }
-        };
-
-        connection.onclose = function () {
-        };
 
         connection.onmessage = function (e) {
             var message = JSON.parse(e.data);
@@ -92,7 +72,7 @@
     var initiatedConnection = false;
 
     function error(err) {
-        alert('oe the humanity!');
+        alert('error');
     }
 
     function callUser(user) {
@@ -175,11 +155,6 @@
 
     // END WEBRTC
 
-    function handleNoWebRTCSupport() {
-        document.getElementById("errorMessage").style.display = "block";
-        document.getElementById("controlPanel").style.visibility = "hidden";
-    }
-
     function handleBeginningOfCall(stream, localStream) {
         document.getElementById("endCallButton").style.visibility = "visible";
         showVideoElements();
@@ -199,9 +174,12 @@
     function handleEndOfCall() {
         document.getElementById("endCallButton").style.visibility = "hidden";
         document.getElementById("videoContainer").style.visibility = "hidden";
+        peerConnection = null;
+        initiatedConnection = false;
     }
 
     function showVideoElements() {
+        //TODO Don't hardcode these dimensions
         if (parent.fullSizedScreen()) {
             setDimensionsOfRemoteVideo(640, 480);
 
@@ -242,7 +220,7 @@
         position:relative
     }
 </style>
-<body ondrop="drop(event)" ondragover="allowDrop(event)" onload="parent.childFrameLoaded(window)">
+<body ondrop="drop(event)" ondragover="allowDrop(event)" onload="establishConnection()">
 <div id="errorMessage" style="display:none">{{unsupportedBrowserError}}</div>
 <div id="controlPanel">
     <input type="checkbox" id="audioOnly"/><label for="audioOnly">{{audioOnly}}</label>

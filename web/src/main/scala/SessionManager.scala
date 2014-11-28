@@ -4,7 +4,7 @@ import java.util.UUID
 
 import akka.actor.{Actor, ActorLogging, ActorRef}
 import tela.baseinterfaces._
-import tela.web.JSONConversions.{AddContacts, CallSignalReceipt, LanguageInfo, PresenceUpdate}
+import tela.web.JSONConversions._
 import tela.web.SessionManager._
 import tela.web.WebSocketDataPusher._
 
@@ -40,6 +40,8 @@ object SessionManager {
 
   case class SendCallSignal(sessionId: String, user: String, data: String)
 
+  case class SendChatMessage(sessionId: String, user: String, data: String)
+
   private def generateRandomString: String = {
     UUID.randomUUID.toString
   }
@@ -70,6 +72,7 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
     case RetrieveData(sessionId, uri) => retrieveData(sessionId, uri)
     case RetrievePublishedData(sessionId, user, uri) => retrievePublishedData(sessionId, user, uri)
     case SendCallSignal(sessionId, user, data) => sendCallSignal(sessionId, user, data)
+    case SendChatMessage(sessionId, user, message) => sendChatMessage(sessionId, user, message)
   }
 
   private def publishData(sessionId: String, json: String, uri: String): Unit = {
@@ -150,6 +153,11 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
     sessions(sessionId).xmppSession.sendCallSignal(user, data)
   }
 
+  private def sendChatMessage(sessionId: String, user: String, message: String): Unit = {
+    log.debug("Session {} changing sending chat message {} to {}", sessionId, message, user)
+    sessions(sessionId).xmppSession.sendChatMessage(user, message)
+  }
+
   private def retrieveSessionIfItExists(sessionId: String): Unit = {
     log.debug("Request for session {}", sessionId)
     sender ! sessions.get(sessionId).map(_.userData)
@@ -188,6 +196,10 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
 
     override def callSignalReceived(user: String, data: String): Unit = {
       webSocketDataPusher ! PushCallSignalToWebSockets(CallSignalReceipt(user, data), sessions(sessionId).webSockets)
+    }
+
+    override def chatMessageReceived(user: String, message: String): Unit = {
+      webSocketDataPusher ! PushChatMessageToWebSockets(ChatMessageReceipt(user, message), sessions(sessionId).webSockets)
     }
   }
 

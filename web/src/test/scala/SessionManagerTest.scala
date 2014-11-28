@@ -11,7 +11,7 @@ import org.mockito.stubbing.Answer
 import org.scalatest.junit.AssertionsForJUnit
 import org.scalatest.mock.MockitoSugar
 import tela.baseinterfaces._
-import tela.web.JSONConversions.{AddContacts, CallSignalReceipt, LanguageInfo, PresenceUpdate}
+import tela.web.JSONConversions._
 import tela.web.SessionManager._
 import tela.web.WebSocketDataPusher._
 
@@ -20,6 +20,7 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
   private val TestPassword = "myPass"
   private val TestSessionId = "aaaaaaaaa"
   private val TestXMPPSettings = XMPPSettings("localhost", 5222, "example.com", "disabled")
+  private val TestWebSocketIds = Set("aaaaa", "bbbbb");
 
   private val Languages = LanguageInfo(Map("en" -> "English", "es" -> "Spanish"), DefaultLanguage)
 
@@ -81,12 +82,7 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def requestValidSession(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
-    val result: Option[UserData] = sendMessageAndGetResponse[Option[UserData]](sessionManager, GetSession(TestSessionId))
-
+    val result: Option[UserData] = loginAndSendMessageExpectingResponse[Option[UserData]](GetSession(TestSessionId))
     assertEquals(TestUsername, result.get.name)
     assertEquals(DefaultLanguage, result.get.language)
   }
@@ -94,27 +90,25 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
   @Test def logout(): Unit = {
     val sessionManager = createSessionManager(Right(xmppSession))
 
-    var closedWebSockets: Set[String] = null
+    var webSocketsClosed = false
 
     dataPusher.setAutoPilot(new TestActor.AutoPilot {
       def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
         msg match {
-          case CloseWebSockets(ids) =>
-            closedWebSockets = ids
+          case CloseWebSockets(`TestWebSocketIds`) =>
+            webSocketsClosed = true
             NoAutoPilot
         }
     })
 
     sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
-    val webSocketIds: Array[String] = Array("aaaaa", "bbbbb")
-    sessionManager ! RegisterWebSocket(TestSessionId, webSocketIds(0))
-    sessionManager ! RegisterWebSocket(TestSessionId, webSocketIds(1))
+    TestWebSocketIds.foreach(sessionManager ! RegisterWebSocket(TestSessionId, _))
 
     sessionManager ! Logout(TestSessionId)
     verify(xmppSession).disconnect()
     verify(dataStoreConnection).closeConnection()
-    closedWebSockets.zipAll(webSocketIds, null, null).foreach { (s) => assertEquals(s._1, s._2)}
+
+    assertTrue(webSocketsClosed)
 
     val result = sendMessageAndGetResponse[Option[String]](sessionManager, GetSession(TestSessionId))
 
@@ -122,43 +116,25 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def setPresence(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
-    sessionManager ! SetPresence(TestSessionId, Presence.Available)
-
+    loginAndSendMessage(SetPresence(TestSessionId, Presence.Available))
     verify(xmppSession).setPresence(Presence.Available)
   }
 
   @Test def registerWebSocket_UnknownSession(): Unit = {
     val sessionManager = createSessionManager(Right(xmppSession))
-
     assertFalse(sendMessageAndGetResponse[Boolean](sessionManager, RegisterWebSocket(TestSessionId, "aaaaa")))
   }
 
   @Test def registerWebSocket(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
-    assertTrue(sendMessageAndGetResponse[Boolean](sessionManager, RegisterWebSocket(TestSessionId, "aaaaa")))
+    assertTrue(loginAndSendMessageExpectingResponse[Boolean](RegisterWebSocket(TestSessionId, "aaaaa")))
   }
 
   @Test def getLanguages(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
-    assertEquals(Languages, sendMessageAndGetResponse[LanguageInfo](sessionManager, GetLanguages(TestSessionId)))
+    assertEquals(Languages, loginAndSendMessageExpectingResponse[LanguageInfo](GetLanguages(TestSessionId)))
   }
 
   @Test def getLanguages_NonDefaultLanguage(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, "es"))
-
-    assertEquals(new LanguageInfo(Languages.languages, "es"), sendMessageAndGetResponse[LanguageInfo](sessionManager, GetLanguages(TestSessionId)))
+    assertEquals(new LanguageInfo(Languages.languages, "es"), loginAndSendMessageExpectingResponse[LanguageInfo](GetLanguages(TestSessionId), "es"))
   }
 
   @Test def deregisterWebSocket(): Unit = {
@@ -193,23 +169,13 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def changePassword(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
     when(xmppSession.changePassword("oldPassword", "newPassword")).thenReturn(true)
-
-    assertTrue(sendMessageAndGetResponse[Boolean](sessionManager, ChangePassword(TestSessionId, "oldPassword", "newPassword")))
+    assertTrue(loginAndSendMessageExpectingResponse(ChangePassword(TestSessionId, "oldPassword", "newPassword")))
   }
 
   @Test def changePassword_Fail(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
     when(xmppSession.changePassword("oldPassword", "newPassword")).thenReturn(false)
-
-    assertFalse(sendMessageAndGetResponse[Boolean](sessionManager, ChangePassword(TestSessionId, "oldPassword", "newPassword")))
+    assertFalse(loginAndSendMessageExpectingResponse(ChangePassword(TestSessionId, "oldPassword", "newPassword")))
   }
 
   @Test def setPreferredLanguage(): Unit = {
@@ -228,12 +194,11 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
     val sessionManager = createSessionManager(Right(xmppSession))
 
     var addContactsMessageSent = false
-    val webSocketIds: Set[String] = Set("aaaaa", "bbbbb")
 
     dataPusher.setAutoPilot(new TestActor.AutoPilot {
       def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
         msg match {
-          case PushContactListInfoToWebSockets(AddContacts(List(ContactInfo("foo@bar.net", Presence.Available), ContactInfo("bar@foo.net", Presence.Away))), `webSocketIds`) =>
+          case PushContactListInfoToWebSockets(AddContacts(List(ContactInfo("foo@bar.net", Presence.Available), ContactInfo("bar@foo.net", Presence.Away))), `TestWebSocketIds`) =>
             addContactsMessageSent = true
             NoAutoPilot
         }
@@ -241,7 +206,7 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
 
     sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
 
-    webSocketIds.foreach(sessionManager ! RegisterWebSocket(TestSessionId, _))
+    TestWebSocketIds.foreach(sessionManager ! RegisterWebSocket(TestSessionId, _))
 
     when(xmppSession.getContactList).then(new Answer[Unit] {
       override def answer(invocation: InvocationOnMock): Unit = {
@@ -255,106 +220,87 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def presenceUpdated(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    var presenceUpdateSent = false
-    val webSocketIds: Set[String] = Set("aaaaa", "bbbbb")
-
-    dataPusher.setAutoPilot(new TestActor.AutoPilot {
-      def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
-        msg match {
-          case PushPresenceUpdateToWebSockets(PresenceUpdate(ContactInfo("foo@bar.net", Presence.Away)), `webSocketIds`) =>
-            presenceUpdateSent = true
-            NoAutoPilot
-        }
-    })
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
-    webSocketIds.foreach(sessionManager ! RegisterWebSocket(TestSessionId, _))
-
-    sessionListener.presenceChanged(ContactInfo("foo@bar.net", Presence.Away))
-
-    assertTrue(presenceUpdateSent)
+    loginAndAssertThatWebsocketsAreNotifiedOfEvent(PushPresenceUpdateToWebSockets(PresenceUpdate(ContactInfo("foo@bar.net", Presence.Away)), TestWebSocketIds),
+      () => sessionListener.presenceChanged(ContactInfo("foo@bar.net", Presence.Away)))
   }
 
   @Test def addContact(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
-    sessionManager ! AddContact(TestSessionId, "foo@bar.net")
-
+    loginAndSendMessage(AddContact(TestSessionId, "foo@bar.net"))
     verify(xmppSession).addContact("foo@bar.net")
   }
 
   @Test def publishData(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
-    sessionManager ! PublishData(TestSessionId, "[]", "http://uri")
-
+    loginAndSendMessage(PublishData(TestSessionId, "[]", "http://uri"))
     verify(dataStoreConnection).insertJSON("[]")
     verify(dataStoreConnection).publish("http://uri")
   }
 
   @Test def retrieveData(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
     when(dataStoreConnection.retrieveJSON("http://myData")).thenReturn("[]")
-
-    val result = sendMessageAndGetResponse[String](sessionManager, RetrieveData(TestSessionId, "http://myData"))
-
-    assertEquals("[]", result)
+    assertEquals("[]", loginAndSendMessageExpectingResponse[String](RetrieveData(TestSessionId, "http://myData")))
   }
 
   @Test def retrieveDataFromOtherUser(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
     when(dataStoreConnection.retrievePublishedDataAsJSON("otherUser", "http://myData")).thenReturn("[]")
-
-    val result = sendMessageAndGetResponse[String](sessionManager, RetrievePublishedData(TestSessionId, "otherUser", "http://myData"))
-
-    assertEquals("[]", result)
+    assertEquals("[]", loginAndSendMessageExpectingResponse(RetrievePublishedData(TestSessionId, "otherUser", "http://myData")))
   }
 
   @Test def sendCallSignal(): Unit = {
-    val sessionManager = createSessionManager(Right(xmppSession))
-
-    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
-
-    sessionManager ! SendCallSignal(TestSessionId, "foo@bar.net", "my signal")
-
+    loginAndSendMessage(SendCallSignal(TestSessionId, "foo@bar.net", "my signal"))
     verify(xmppSession).sendCallSignal("foo@bar.net", "my signal")
   }
 
   @Test def callSignalReceived(): Unit = {
+    loginAndAssertThatWebsocketsAreNotifiedOfEvent(PushCallSignalToWebSockets(CallSignalReceipt("foo@bar.net", "message"), `TestWebSocketIds`),
+      () => sessionListener.callSignalReceived("foo@bar.net", "message"))
+  }
+
+  @Test def sendChatMessage(): Unit = {
+    loginAndSendMessage(SendChatMessage(TestSessionId, "foo@bar.net", "message"))
+    verify(xmppSession).sendChatMessage("foo@bar.net", "message")
+  }
+
+  @Test def chatMessageReceived(): Unit = {
+    loginAndAssertThatWebsocketsAreNotifiedOfEvent(PushChatMessageToWebSockets(ChatMessageReceipt("foo@bar.net", "message"), TestWebSocketIds),
+      () => sessionListener.chatMessageReceived("foo@bar.net", "message"))
+  }
+
+  private def loginAndAssertThatWebsocketsAreNotifiedOfEvent(expectedMessage: AnyRef, executeEvent: () => Unit): Unit = {
     val sessionManager = createSessionManager(Right(xmppSession))
 
-    var callSignalReceived = false
-    val webSocketIds: Set[String] = Set("aaaaa", "bbbbb")
+    var dataPusherReceivedExpectedMessage = false
 
     dataPusher.setAutoPilot(new TestActor.AutoPilot {
       def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
         msg match {
-          case PushCallSignalToWebSockets(CallSignalReceipt("foo@bar.net", "message"), `webSocketIds`) =>
-            callSignalReceived = true
+          case `expectedMessage` =>
+            dataPusherReceivedExpectedMessage = true
             NoAutoPilot
         }
     })
 
     sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
 
-    webSocketIds.foreach(sessionManager ! RegisterWebSocket(TestSessionId, _))
+    TestWebSocketIds.foreach(sessionManager ! RegisterWebSocket(TestSessionId, _))
 
-    sessionListener.callSignalReceived("foo@bar.net", "message")
+    executeEvent()
+    assertTrue(dataPusherReceivedExpectedMessage)
+  }
 
-    assertTrue(callSignalReceived)
+  private def loginAndSendMessage(message: AnyRef): Unit = {
+    val sessionManager = createSessionManager(Right(xmppSession))
+
+    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
+
+    sessionManager ! message
+  }
+
+  private def loginAndSendMessageExpectingResponse[ResponseType](message: AnyRef, language: String = DefaultLanguage): ResponseType = {
+    val sessionManager = createSessionManager(Right(xmppSession))
+
+    sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, language))
+
+    sendMessageAndGetResponse[ResponseType](sessionManager, message)
   }
 
   private def createSessionManager(result: Either[LoginFailure, XMPPSession]): TestActorRef[SessionManager] = {

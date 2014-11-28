@@ -6,6 +6,11 @@
             "isRight": false
         },
         {
+            "name": "chat",
+            "address": "apps/Chat/index.html",
+            "isRight": false
+        },
+        {
             "name": "contactList",
             "address": "apps/ContactList/index.html",
             "isRight": true
@@ -33,14 +38,16 @@
             "editProfile": "Edit Profile",
             "settings": "Settings",
             "contactList": "Contact List",
-            "phone": "Phone"
+            "phone": "Phone",
+            "chat": "Chat"
         },
         "es": {
             "displayProfile": "Mostrar Perfil",
             "editProfile": "Editar Perfil",
             "settings": "Ajustes",
             "contactList": "Contactos",
-            "phone": "Teléfono"
+            "phone": "Teléfono",
+            "chat": "Platicar"
         }
     }
 }

@@ -6,6 +6,7 @@ import akka.actor._
 import com.typesafe.config.{Config, ConfigFactory}
 import org.jivesoftware.smack.SmackConfiguration
 import org.mashupbots.socko.events.{HttpResponseStatus, SockoEvent}
+import org.mashupbots.socko.handlers.{StaticContentHandler, StaticContentHandlerConfig, StaticFileRequest}
 import org.mashupbots.socko.infrastructure.ConfigUtil
 import org.mashupbots.socko.routes._
 import org.mashupbots.socko.webserver.{WebServer, WebServerConfig}
@@ -76,7 +77,7 @@ object Tela {
   }
 
   private def configureWebServerRoutes(actorSystem: ActorSystem): PartialFunction[SockoEvent, Unit] = {
-    //val staticContentHandlerRouter = actorSystem.actorOf(Props(new StaticContentHandler(new StaticContentHandlerConfig(rootFilePaths = Seq("/Users/will/dev/tela/web/src/main/static")))))
+    val staticContentHandlerRouter = actorSystem.actorOf(Props(new StaticContentHandler(new StaticContentHandlerConfig(rootFilePaths = Seq("/Users/will/dev/tela/web/src/main/static")))))
 
     Routes({
       case HttpRequest(request) => request match {
@@ -84,7 +85,7 @@ object Tela {
         case Path("/data") => actorSystem.actorOf(Props(new DataHandler(sessionManager))) ! request
         case PathSegments("settings" :: setting :: theRest) => actorSystem.actorOf(Props(new SettingsDataHandler(sessionManager, setting))) ! request
         case PathSegments("apps" :: relativePath :: theRest) => actorSystem.actorOf(Props(new AppHandler(sessionManager, AppRoot + "/apps", relativePath))) ! request
-        //case PathSegments("static" :: file :: Nil) => staticContentHandlerRouter ! new StaticFileRequest(request, new File("web/src/main/static", file))
+        case PathSegments("static" :: path) => staticContentHandlerRouter ! new StaticFileRequest(request, new File("web/src/main/static", path.foldLeft("")((a, b) => a + "/" + b)))
         case _ => request.response.write(HttpResponseStatus.NOT_FOUND)
       }
       case WebSocketHandshake(wsHandshake) => wsHandshake match {

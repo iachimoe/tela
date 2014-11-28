@@ -7,7 +7,7 @@ import org.jivesoftware.smack._
 import org.jivesoftware.smack.filter.PacketTypeFilter
 import org.jivesoftware.smack.packet.IQ.Type
 import org.jivesoftware.smack.packet.Presence.Mode
-import org.jivesoftware.smack.packet.{IQ, Packet, Presence}
+import org.jivesoftware.smack.packet.{IQ, Message, Packet, Presence}
 import org.jivesoftware.smack.provider.{IQProvider, ProviderManager}
 import org.jivesoftware.smack.sasl.SASLErrorException
 import org.jivesoftware.smack.tcp.XMPPTCPConnection
@@ -61,9 +61,11 @@ object SmackXMPPSession {
       log.info("User {} attempting login", username)
       connection.login(username, password, resource)
       val session: SmackXMPPSession = new SmackXMPPSession(connection, sessionListener, xmppSettings)
+
       //TODO There seems to be a race condition with this not getting set on time.
       connection.getRoster.addRosterListener(new ContactListChangeListener(session))
 
+      ChatManager.getInstanceFor(connection).addChatListener(new TelaChatManagerListener(session))
       connection.addPacketListener(new CallSignalPacketListener(session), new PacketTypeFilter(classOf[CallSignal]))
       Right(session)
     } catch {
@@ -109,6 +111,19 @@ object SmackXMPPSession {
       log.debug("User {} received call signal packet", xmppSession.connection.getUser)
       val signal = packet.asInstanceOf[CallSignal]
       xmppSession.sessionListener.callSignalReceived(signal.getFrom, signal.data)
+    }
+  }
+
+  private class TelaChatManagerListener(private val xmppSession: SmackXMPPSession) extends ChatManagerListener {
+    override def chatCreated(chat: Chat, createdLocally: Boolean) {
+      {
+        //TODO Should probably do an if (!createdLocally) check here, but not having it doesn't seem to cause any problems for now
+        chat.addMessageListener(new ChatMessageListener {
+          override def processMessage(chat: Chat, message: Message): Unit = {
+            xmppSession.sessionListener.chatMessageReceived(XmppStringUtils.parseBareJid(message.getFrom), message.getBody)
+          }
+        })
+      }
     }
   }
 
@@ -219,6 +234,12 @@ private class SmackXMPPSession(private val connection: AbstractXMPPConnection, p
     connection.sendPacket(signal)
   }
 
+  override def sendChatMessage(user: String, message: String): Unit = {
+    log.info("User {} sending chat message to user {}", connection.getUser, user)
+    //TODO would probably be better to maintain a list of chat objects rather than creating a new one every time
+    ChatManager.getInstanceFor(connection).createChat(user, null).sendMessage(message)
+  }
+
   private def getXMPPPresenceFromTelaPresence(presence: baseinterfaces.Presence): Mode = {
     presence match {
       case tela.baseinterfaces.Presence.Available => Presence.Mode.available
@@ -274,6 +295,8 @@ private class SmackXMPPSession(private val connection: AbstractXMPPConnection, p
     override def presenceChanged(contact: ContactInfo): Unit = {}
 
     override def callSignalReceived(user: String, data: String): Unit = {}
+
+    override def chatMessageReceived(user: String, message: String): Unit = {}
   }
 
 }

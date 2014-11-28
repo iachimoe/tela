@@ -79,4 +79,22 @@ object JSONConversions {
         CallSignalDataKey -> callSignalReceipt.data)
     )
   }
+
+  val SendChatMessageAction = "sendChatMessage"
+  val ChatMessageRecipientKey = "user"
+
+  val ChatMessageDataKey = "message"
+  val ChatMessageReceived = "chatMessageReceived"
+  val ChatMessageSenderKey = "user"
+
+  case class ChatMessageReceipt(user: String, message: String)
+
+  implicit val chatMessageReceiptWrites = new Writes[ChatMessageReceipt] {
+    override def writes(chatMessageReceipt: ChatMessageReceipt) = Json.obj(
+      ActionKey -> ChatMessageReceived,
+      DataKey -> Json.obj(
+        ChatMessageSenderKey -> chatMessageReceipt.user,
+        ChatMessageDataKey -> chatMessageReceipt.message)
+    )
+  }
 }

@@ -18,6 +18,7 @@ class WebSocketRequestHandler(sessionManager: ActorRef, private val closeWebSock
           case GetContactListAction => sessionManager ! GetContactList(sessionId)
           case AddContactAction => sessionManager ! AddContact(sessionId, (json \ DataKey).as[String])
           case SendCallSignalAction => sessionManager ! SendCallSignal(sessionId, (json \ DataKey \ CallSignalRecipientKey).as[String], (json \ DataKey \ CallSignalDataKey).toString())
+          case SendChatMessageAction => sessionManager ! SendChatMessage(sessionId, (json \ DataKey \ ChatMessageRecipientKey).as[String], (json \ DataKey \ ChatMessageDataKey).as[String])
         }
       }, () => closeWebSocket(wsFrame.webSocketId))
   }

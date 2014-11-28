@@ -20,6 +20,7 @@ import tela.web.SessionManager._
 
 class WebSocketRequestHandlerTest extends SockoHandlerTestBase {
   private val TestWebSocketId = "wsid"
+  private val TestContactAddress = "foo@bar.net"
 
   private var closedWebSocket: String = null
 
@@ -61,44 +62,36 @@ class WebSocketRequestHandlerTest extends SockoHandlerTestBase {
   }
 
   @Test def getContactList(): Unit = {
-    var getContactListCalled = false
-
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
-      case GetContactList(TestSessionId) =>
-        getContactListCalled = true
-        NoAutoPilot
-    })
-
-    handler ! createWebSocketRequestEvent( s"""{"$ActionKey": "$GetContactListAction"}""")
-    assertTrue(getContactListCalled)
+    sendJSONAndAssertMessageSentToSessionManager(GetContactList(TestSessionId), s"""{"$ActionKey": "$GetContactListAction"}""")
   }
 
   @Test def addContact(): Unit = {
-    var addContactCalled = false
-
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
-      case AddContact(TestSessionId, "foo@bar.net") =>
-        addContactCalled = true
-        NoAutoPilot
-    })
-
-    handler ! createWebSocketRequestEvent( s"""{"$ActionKey": "$AddContactAction", "$DataKey": "foo@bar.net"}""")
-    assertTrue(addContactCalled)
+    sendJSONAndAssertMessageSentToSessionManager(AddContact(TestSessionId, TestContactAddress), s"""{"$ActionKey": "$AddContactAction", "$DataKey": "$TestContactAddress"}""")
   }
 
   @Test def sendCallSignal(): Unit = {
     val testSignal = """{"type":"offer","sdp":"v=0"}"""
+    sendJSONAndAssertMessageSentToSessionManager(SendCallSignal(TestSessionId, TestContactAddress, testSignal),
+      s"""{"$ActionKey": "$SendCallSignalAction", "$DataKey": {"$CallSignalRecipientKey": "$TestContactAddress", "$CallSignalDataKey": $testSignal}}""")
+  }
 
-    var sendCallSignalCalled = false
+  @Test def sendChatMessage(): Unit = {
+    val testMessage = "message"
+    sendJSONAndAssertMessageSentToSessionManager(SendChatMessage(TestSessionId, TestContactAddress, testMessage),
+      s"""{"$ActionKey": "$SendChatMessageAction", "$DataKey": {"$ChatMessageRecipientKey": "$TestContactAddress", "$ChatMessageDataKey": "$testMessage"}}""")
+  }
+
+  private def sendJSONAndAssertMessageSentToSessionManager(expectedMessageToSessionManager: AnyRef, json: String): Unit = {
+    var sessionManagerReceivedExpectedMessage = false
 
     initialiseTestActorAndProbe(true, (sender: ActorRef) => {
-      case SendCallSignal(TestSessionId, "foo@bar.net", `testSignal`) =>
-        sendCallSignalCalled = true
+      case `expectedMessageToSessionManager` =>
+        sessionManagerReceivedExpectedMessage = true
         NoAutoPilot
     })
 
-    handler ! createWebSocketRequestEvent( s"""{"$ActionKey": "$SendCallSignalAction", "$DataKey": {"$CallSignalRecipientKey": "foo@bar.net", "$CallSignalDataKey": $testSignal}}""")
-    assertTrue(sendCallSignalCalled)
+    handler ! createWebSocketRequestEvent(json)
+    assertTrue(sessionManagerReceivedExpectedMessage)
   }
 
   private def initialiseTestActorAndProbe(shouldReturnUserData: Boolean, expectedCases: ((ActorRef) => PartialFunction[Any, TestActor.AutoPilot])*): Unit = {

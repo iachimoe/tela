@@ -19,6 +19,7 @@ class WebSocketDataPusherTest extends AssertionsForJUnit with MockitoSugar {
 
   private val TestUser1 = "user1@example.com"
   private val TestUser2 = "user2@example.com"
+  private val TestMessage = "message"
   private val TestWebSocketIds: Set[String] = Set("asdf", "jkl")
 
   @Before def initialize(): Unit = {
@@ -36,7 +37,7 @@ class WebSocketDataPusherTest extends AssertionsForJUnit with MockitoSugar {
     assertSame(TestWebSocketIds, closedWebSocketIds)
   }
 
-  @Test def sendNewContacts(): Unit = {
+  @Test def newContacts(): Unit = {
     handler ! PushContactListInfoToWebSockets(AddContacts(List(ContactInfo(TestUser1, Presence.Available), ContactInfo(TestUser2, Presence.Away))), TestWebSocketIds)
     assertSame(TestWebSocketIds, writtenToWebSocketIds)
     assertEquals( s"""{"$ActionKey":"$AddContactsAction","$DataKey":[""" +
@@ -51,9 +52,15 @@ class WebSocketDataPusherTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def callSignal(): Unit = {
-    handler ! PushCallSignalToWebSockets(CallSignalReceipt("user@host", "message"), TestWebSocketIds)
+    handler ! PushCallSignalToWebSockets(CallSignalReceipt(TestUser1, TestMessage), TestWebSocketIds)
     assertSame(TestWebSocketIds, writtenToWebSocketIds)
-    assertEquals( s"""{"$ActionKey":"$CallSignalReceived","$DataKey":{"$CallSignalSenderKey":"user@host","$CallSignalDataKey":"message"}}""", writtenText)
+    assertEquals( s"""{"$ActionKey":"$CallSignalReceived","$DataKey":{"$CallSignalSenderKey":"$TestUser1","$CallSignalDataKey":"$TestMessage"}}""", writtenText)
+  }
+
+  @Test def chatMessage(): Unit = {
+    handler ! PushChatMessageToWebSockets(ChatMessageReceipt(TestUser1, TestMessage), TestWebSocketIds)
+    assertSame(TestWebSocketIds, writtenToWebSocketIds)
+    assertEquals( s"""{"$ActionKey":"$ChatMessageReceived","$DataKey":{"$ChatMessageSenderKey":"$TestUser1","$ChatMessageDataKey":"$TestMessage"}}""", writtenText)
   }
 
   private def writeTextToSockets(text: String, webSocketIds: Iterable[String]): Unit = {

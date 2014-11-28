@@ -1,0 +1,10 @@
+{
+ "name": "tela",
+ "dependencies": {
+  "requirejs": "2.1.15",
+  "scribe": "1.0.0",
+  "scribe-plugin-toolbar": "0.1.4"
+ },
+ "private": true
+}
+

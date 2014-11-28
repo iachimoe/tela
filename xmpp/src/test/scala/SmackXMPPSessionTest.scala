@@ -6,7 +6,7 @@ import org.jivesoftware.smack.SmackException.ConnectionException
 import org.jivesoftware.smack._
 import org.jivesoftware.smack.filter.{PacketFilter, PacketIDFilter}
 import org.jivesoftware.smack.packet.IQ.Type
-import org.jivesoftware.smack.packet.{IQ, Presence, RosterPacket}
+import org.jivesoftware.smack.packet.{IQ, Message, Presence, RosterPacket}
 import org.jivesoftware.smack.provider.ProviderManager
 import org.jivesoftware.smack.sasl.packet.SaslStreamElements.SASLFailure
 import org.jivesoftware.smack.sasl.{SASLError, SASLErrorException}
@@ -39,6 +39,7 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
   private val RawTestCallSignalPacket = <callSignal xmlns={SmackXMPPSession.TelaURN}>
     {TestCallSignalData}
   </callSignal>.toString()
+  private val TestChatMessageData = "Chat message"
 
   private var connection: TestableXMPPConnection = null
   private var roster: Roster = null
@@ -95,10 +96,7 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def changePassword(): Unit = {
-    val session = connectToServerAndGetSession
-    when(connection.setUser(TestFullJid)).thenCallRealMethod() //TODO URGH
-    connection.setUser(TestFullJid)
-    when(connection.getUser).thenCallRealMethod()
+    val session: XMPPSession = createSessionAndConfigureForPasswordChange()
 
     val changePasswordConnection = mock[TestableXMPPConnection]
     when(changePasswordConnection.getRoster).thenReturn(roster)
@@ -121,10 +119,7 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def changePassword_incorrectOldPassword(): Unit = {
-    val session = connectToServerAndGetSession
-    when(connection.setUser(TestFullJid)).thenCallRealMethod() //TODO URGH
-    connection.setUser(TestFullJid)
-    when(connection.getUser).thenCallRealMethod()
+    val session: XMPPSession = createSessionAndConfigureForPasswordChange()
 
     val changePasswordConnection = mock[TestableXMPPConnection]
     when(changePasswordConnection.getRoster).thenReturn(roster)
@@ -156,37 +151,13 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
     val argument: ArgumentCaptor[RosterListener] = ArgumentCaptor.forClass(classOf[RosterListener])
     verify(roster).addRosterListener(argument.capture())
 
-    val presence: Presence = new Presence(Presence.Type.unavailable, "", 0, Presence.Mode.available)
-    presence.setFrom(TestFullJid)
-
-    argument.getValue.presenceChanged(presence)
-    verify(sessionListener).presenceChanged(ContactInfo(TestBareJid, tela.baseinterfaces.Presence.Unknown))
-
-    presence.setType(Presence.Type.available)
-    argument.getValue.presenceChanged(presence)
-    verify(sessionListener).presenceChanged(ContactInfo(TestBareJid, tela.baseinterfaces.Presence.Available))
-
-    presence.setMode(Presence.Mode.away)
-    argument.getValue.presenceChanged(presence)
-    verify(sessionListener).presenceChanged(ContactInfo(TestBareJid, tela.baseinterfaces.Presence.Away))
-
-    reset(sessionListener)
-    presence.setMode(Presence.Mode.chat)
-    argument.getValue.presenceChanged(presence)
-    verify(sessionListener).presenceChanged(ContactInfo(TestBareJid, tela.baseinterfaces.Presence.Available))
-
-    presence.setMode(Presence.Mode.dnd)
-    argument.getValue.presenceChanged(presence)
-    verify(sessionListener).presenceChanged(ContactInfo(TestBareJid, tela.baseinterfaces.Presence.DoNotDisturb))
-
-    reset(sessionListener)
-    presence.setMode(Presence.Mode.xa)
-    argument.getValue.presenceChanged(presence)
-    verify(sessionListener).presenceChanged(ContactInfo(TestBareJid, tela.baseinterfaces.Presence.Away))
-
-    presence.setMode(null)
-    argument.getValue.presenceChanged(presence)
-    verify(sessionListener).presenceChanged(ContactInfo(TestBareJid, tela.baseinterfaces.Presence.Available))
+    assertThatReceiptOfPresenceChangeIsHandledCorrectly(tela.baseinterfaces.Presence.Unknown, Presence.Type.unavailable, Presence.Mode.available, argument)
+    assertThatReceiptOfPresenceChangeIsHandledCorrectly(tela.baseinterfaces.Presence.Available, Presence.Type.available, Presence.Mode.available, argument)
+    assertThatReceiptOfPresenceChangeIsHandledCorrectly(tela.baseinterfaces.Presence.Away, Presence.Type.available, Presence.Mode.away, argument)
+    assertThatReceiptOfPresenceChangeIsHandledCorrectly(tela.baseinterfaces.Presence.Available, Presence.Type.available, Presence.Mode.chat, argument)
+    assertThatReceiptOfPresenceChangeIsHandledCorrectly(tela.baseinterfaces.Presence.DoNotDisturb, Presence.Type.available, Presence.Mode.dnd, argument)
+    assertThatReceiptOfPresenceChangeIsHandledCorrectly(tela.baseinterfaces.Presence.Away, Presence.Type.available, Presence.Mode.xa, argument)
+    assertThatReceiptOfPresenceChangeIsHandledCorrectly(tela.baseinterfaces.Presence.Available, Presence.Type.available, null, argument)
   }
 
   @Test def addContact(): Unit = {
@@ -231,10 +202,12 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
     connectToServer
     val packetListenerCaptor: ArgumentCaptor[PacketListener] = ArgumentCaptor.forClass(classOf[PacketListener])
     val packetFilterCaptor: ArgumentCaptor[PacketFilter] = ArgumentCaptor.forClass(classOf[PacketFilter])
-    verify(connection).addPacketListener(packetListenerCaptor.capture(), packetFilterCaptor.capture())
+    verify(connection, atLeastOnce()).addPacketListener(packetListenerCaptor.capture(), packetFilterCaptor.capture())
 
     val signal: CallSignal = createCallSignal(TestCallSignalData, TestBareJid + "/" + SmackXMPPSession.DefaultResourceName, Type.set)
-    assertTrue(packetFilterCaptor.getValue.accept(signal))
+
+    // We use the index 1 because we expect the listener to be the second one added.
+    assertTrue(getValueFromArgumentCaptor(packetFilterCaptor, 1).accept(signal))
 
     assertFalse(packetFilterCaptor.getValue.accept(new IQ() {
       override def getChildElementXML: CharSequence = {
@@ -243,7 +216,7 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
     }))
 
     signal.setFrom(TestBareJid)
-    packetListenerCaptor.getValue.processPacket(signal)
+    getValueFromArgumentCaptor(packetListenerCaptor, 1).processPacket(signal)
 
     verify(sessionListener).callSignalReceived(TestBareJid, TestCallSignalData)
   }
@@ -254,6 +227,48 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
     xmlParser.setInput(new StringReader(RawTestCallSignalPacket))
     xmlParser.nextToken() //simulates the state of the parser when it gets passed to the provider in production
     assertTrue(new IQPacketMatcher(new CallSignal(TestCallSignalData)).matches(provider.parse(xmlParser)))
+  }
+
+  @Test def sendChatMessage(): Unit = {
+    val session = connectToServerAndGetSession
+    session.sendChatMessage(TestBareJid, TestChatMessageData)
+    val message: Message = new Message(TestBareJid)
+    message.setBody(TestChatMessageData)
+    verify(connection).sendPacket(argThat(new ChatMessagePacketMatcher(message)))
+  }
+
+  @Test def receiveChatMessage(): Unit = {
+    connectToServer
+    val packetListenerCaptor: ArgumentCaptor[PacketListener] = ArgumentCaptor.forClass(classOf[PacketListener])
+    verify(connection, atLeastOnce()).addPacketListener(packetListenerCaptor.capture(), anyObject[PacketFilter]())
+
+    val message = new Message("")
+    message.setFrom(TestFullJid)
+    message.setBody(TestChatMessageData)
+
+    // We use the index 0 because we expect the listener to be the first one added.
+    getValueFromArgumentCaptor(packetListenerCaptor, 0).processPacket(message)
+    verify(sessionListener).chatMessageReceived(TestBareJid, TestChatMessageData)
+  }
+
+  private def assertThatReceiptOfPresenceChangeIsHandledCorrectly(expectedResult: tela.baseinterfaces.Presence, xmppType: Presence.Type, xmppMode: Presence.Mode, rosterListenerCaptor: ArgumentCaptor[RosterListener]): Unit = {
+    val presence: Presence = new Presence(xmppType, "", 0, xmppMode)
+    presence.setFrom(TestFullJid)
+    reset(sessionListener) //Need to do this to ensure that old calls with same expected values don't cause failures
+    rosterListenerCaptor.getValue.presenceChanged(presence)
+    verify(sessionListener).presenceChanged(ContactInfo(TestBareJid, expectedResult))
+  }
+
+  private def getValueFromArgumentCaptor[T](captor: ArgumentCaptor[T], index: Int): T = {
+    captor.getAllValues.toList(index)
+  }
+
+  private def createSessionAndConfigureForPasswordChange(): XMPPSession = {
+    val session = connectToServerAndGetSession
+    when(connection.setUser(TestFullJid)).thenCallRealMethod()
+    connection.setUser(TestFullJid)
+    when(connection.getUser).thenCallRealMethod()
+    session
   }
 
   private def createCallSignal(data: String, to: String, iqType: Type): CallSignal = {
@@ -288,6 +303,16 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
       constructor.setAccessible(true)
       constructor.newInstance(jid, "nickname", RosterPacket.ItemType.both, RosterPacket.ItemStatus.subscribe, null, null).asInstanceOf[RosterEntry]
     }))
+  }
+
+  private class ChatMessagePacketMatcher(private val expected: Message) extends ArgumentMatcher[Message] {
+    override def matches(argument: scala.Any): Boolean = {
+      argument match {
+        case actual: Message =>
+          expected.getTo == actual.getTo && expected.getBody == actual.getBody
+        case _ => false
+      }
+    }
   }
 
   private class IQPacketMatcher(private val expected: IQ) extends ArgumentMatcher[IQ] {

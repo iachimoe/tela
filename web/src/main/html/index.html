@@ -11,23 +11,7 @@
         function makeRESTRequest(address, handleSuccess, handleFailure) {
             var client = new XMLHttpRequest();
             client.open("GET", address);
-
-            var received = 0;
-
-            client.onreadystatechange = function () {
-                if (client.readyState == 4 && received == 0) {
-                    received++;
-                    if (client.status == 200) {
-                        if (handleSuccess != null) {
-                            handleSuccess(client.responseText);
-                        }
-                    } else {
-                        if (handleFailure != null) {
-                            handleFailure();
-                        }
-                    }
-                }
-            };
+            configureHandlers(client, handleSuccess, handleFailure);
             client.send();
         }
 
@@ -35,7 +19,11 @@
             var client = new XMLHttpRequest();
             client.open("PUT", address);
             client.setRequestHeader("Content-Type", contentType);
+            configureHandlers(client, handleSuccess, handleFailure);
+            client.send(content);
+        }
 
+        function configureHandlers(client, handleSuccess, handleFailure) {
             var received = 0;
 
             client.onreadystatechange = function () {
@@ -52,7 +40,6 @@
                     }
                 }
             };
-            client.send(content);
         }
 
         function createJsonLdObjectAsString(id, type, data) {
@@ -104,9 +91,15 @@
             }
         }
 
+        var currentApp = null;
+
         function addFrameToSmallScreen(frame, info) {
             if (info["name"] === defaultApp) {
-                document.getElementById("app").appendChild(frame);
+                frame.style.display = "inline";
+                currentApp = frame;
+            }
+            else {
+                frame.style.display = "none";
             }
             frame.style.width = "100%";
             frame.style.height = "100%";
@@ -115,6 +108,7 @@
             addFrameToSwitcherSelector(info);
 
             appToFrameMap[info["name"]] = frame;
+            document.getElementById("app").appendChild(frame);
         }
 
         function addFrameLinkToTouchDropSelector(info) {
@@ -144,7 +138,8 @@
                 document.getElementById("rightColumn").appendChild(frame);
             }
             else {
-                frame.style.width = "720px";
+                frame.style.boxSizing = "border-box";
+                frame.style.width = "100%";
                 frame.style.height = "540px";
                 document.getElementById("leftColumn").appendChild(frame);
             }
@@ -175,8 +170,15 @@
 
         function switchToApp(appName) {
             document.getElementById("appSwitcherSelector").value = appName;
-            document.getElementById("app").removeChild(document.getElementById("app").children[0]);
-            document.getElementById("app").appendChild(appToFrameMap[appName]);
+
+            currentApp.style.display = "none";
+            appToFrameMap[appName].style.display = "inline";
+            currentApp = appToFrameMap[appName];
+
+            if (touchDropItem != null && typeof currentApp.contentWindow.handleTouchDrop === "function") {
+                currentApp.contentWindow.handleTouchDrop(touchDropItem);
+            }
+            touchDropItem = null;
         }
 
         function fullSizedScreen() {
@@ -186,22 +188,8 @@
 
         // BEGIN DRAG/DROP FUNCTIONS
 
-        var dropItemOnLoad = null;
-        var dragItem = null;
-
-        function childFrameLoaded(window) {
-            if (dropItemOnLoad != null) {
-                if (typeof window.handleDrop === "function") {
-                    window.handleDrop(dropItemOnLoad);
-                }
-            }
-            else {
-                if (typeof window.nothingToDrop === "function") {
-                    window.nothingToDrop();
-                }
-            }
-            dropItemOnLoad = null;
-        }
+        var touchDropItem = null;
+        var touchDragItem = null;
 
         function childTouchDragMove(window, touch) {
             var frame = getIframeFromWindow(window);
@@ -209,40 +197,40 @@
             var left = frame.getBoundingClientRect().left + touch.clientX;
             var top = frame.getBoundingClientRect().top + touch.clientY;
 
-            dragItem.style.left = left + "px";
-            dragItem.style.top = top + "px";
+            touchDragItem.style.left = left + "px";
+            touchDragItem.style.top = top + "px";
         }
 
         function childTouchDragEnd(window, touch) {
-            document.body.removeChild(dragItem);
+            document.body.removeChild(touchDragItem);
             var frame = getIframeFromWindow(window);
             var left = (frame.getBoundingClientRect().left + touch.clientX) - 1;
             var top = frame.getBoundingClientRect().top + touch.clientY;
             var element = document.elementFromPoint(left, top);
             if (element.tagName.toLowerCase() === "iframe") {
-                if (typeof element.contentWindow.handleDrop === "function") {
-                    element.contentWindow.handleDrop(dragItem.innerHTML);
+                if (typeof element.contentWindow.handleTouchDrop === "function") {
+                    element.contentWindow.handleTouchDrop(touchDragItem.innerHTML);
                 }
             }
             else if (element.id === "appSwitcher" || element.id === "appSwitcherSelector") {
-                dropItemOnLoad = dragItem.innerHTML;
+                touchDropItem = touchDragItem.innerHTML;
                 document.getElementById("appSelectorForTouchDrops").style.visibility = "visible";
             }
-            dragItem = null;
+            touchDragItem = null;
         }
 
         function childTouchDragStart(window, touch, item) {
             var frame = getIframeFromWindow(window);
-            dragItem = document.createElement("div");
-            dragItem.innerHTML = item;
+            touchDragItem = document.createElement("div");
+            touchDragItem.innerHTML = item;
 
             var left = frame.getBoundingClientRect().left + touch.clientX;
             var top = frame.getBoundingClientRect().top + touch.clientY;
 
-            dragItem.style.position = "absolute";
-            dragItem.style.left = left + "px";
-            dragItem.style.top = top + "px";
-            document.body.appendChild(dragItem);
+            touchDragItem.style.position = "absolute";
+            touchDragItem.style.left = left + "px";
+            touchDragItem.style.top = top + "px";
+            document.body.appendChild(touchDragItem);
         }
 
         function getIframeFromWindow(window) {
@@ -276,7 +264,6 @@
         }
 
         #app, #smallScreenLayout {
-            width:100%;
             height:100%
         }
 

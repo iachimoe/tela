@@ -39,6 +39,8 @@ trait XMPPSessionListener {
   def presenceChanged(contact: ContactInfo): Unit
 
   def callSignalReceived(user: String, data: String): Unit
+
+  def chatMessageReceived(user: String, message: String): Unit
 }
 
 trait XMPPSession {
@@ -57,4 +59,6 @@ trait XMPPSession {
   def getPublishedData(user: String, node: String): String
 
   def sendCallSignal(user: String, data: String): Unit
+
+  def sendChatMessage(user: String, message: String): Unit
 }
