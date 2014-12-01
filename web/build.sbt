@@ -1,6 +1,6 @@
 name := "web"
 
-libraryDependencies += "org.mashupbots.socko" % "socko-webserver_2.11" % "0.5.0"
+libraryDependencies += "org.mashupbots.socko" % "socko-webserver_2.11" % "latest.integration"
 
 libraryDependencies += "com.github.spullara.mustache.java" % "compiler" % "latest.integration"
 

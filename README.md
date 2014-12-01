@@ -53,7 +53,5 @@ A user can fill in their profile info using the profile info pane. To view anoth
 
 Yes, I realise that the UI looks more like a construction site than a piece of software, we will describe plans to overhaul it in our roadmap document which is coming Real Soon Now :-)
 
-###Miscellaneous gotchas
+###Miscellaneous gotcha
 Both sides of the conversation have to click “Hang Up” to properly end a video call
-
-Changing language and resetting password don’t work on Firefox due to a bug in the HTTP server being used (plans are afoot to move to Play Framework)
