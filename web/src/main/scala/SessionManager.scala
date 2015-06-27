@@ -181,6 +181,9 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
     id
   }
 
+  //TODO It's a big no-no that the methods of this class, which are called from an arbitrary thread,
+  //are allowed to access the sessions map directly. They should be instead send a message to the actor
+  //to do what needs to be done
   private class SessionListener extends XMPPSessionListener {
     var sessionId: String = null
 

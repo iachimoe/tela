@@ -27,7 +27,5 @@ class WebSocketRequestHandler(sessionManager: ActorRef, private val closeWebSock
     (json \ ActionKey).as[String]
   }
 
-  override protected def getDocumentRoot: String = {
-    null
-  }
+  override protected def getDocumentRoot: String = ???
 }

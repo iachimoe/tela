@@ -1,14 +1,10 @@
 name := "tela"
 
-//TODO: Get this working
-
-//resolvers += "Secure version of maven central" at "https://repo1.maven.org/maven2/"
-
-//externalResolvers := Resolver.withDefaultResolvers(resolvers.value, mavenCentral = false)
-
 version in Global := "0.0"
 
-scalaVersion in Global := "2.11.4"
+scalaVersion in Global := "2.11.6"
+
+sbtVersion in Global := "0.13.8"
 
 lazy val tela = (project in file(".")) aggregate(runner, baseinterfaces, xmpp, web, datastore)
 

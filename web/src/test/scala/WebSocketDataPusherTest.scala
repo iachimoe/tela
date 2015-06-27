@@ -52,9 +52,10 @@ class WebSocketDataPusherTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def callSignal(): Unit = {
-    handler ! PushCallSignalToWebSockets(CallSignalReceipt(TestUser1, TestMessage), TestWebSocketIds)
+    val testSignal = """{"type":"offer","sdp":"v=0"}"""
+    handler ! PushCallSignalToWebSockets(CallSignalReceipt(TestUser1, testSignal), TestWebSocketIds)
     assertSame(TestWebSocketIds, writtenToWebSocketIds)
-    assertEquals( s"""{"$ActionKey":"$CallSignalReceived","$DataKey":{"$CallSignalSenderKey":"$TestUser1","$CallSignalDataKey":"$TestMessage"}}""", writtenText)
+    assertEquals( s"""{"$ActionKey":"$CallSignalReceived","$DataKey":{"$CallSignalSenderKey":"$TestUser1","$CallSignalDataKey":$testSignal}}""", writtenText)
   }
 
   @Test def chatMessage(): Unit = {

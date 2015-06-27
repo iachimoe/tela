@@ -76,8 +76,8 @@ object JSONConversions {
       ActionKey -> CallSignalReceived,
       DataKey -> Json.obj(
         CallSignalSenderKey -> callSignalReceipt.user,
-        CallSignalDataKey -> callSignalReceipt.data)
-    )
+        CallSignalDataKey -> Json.toJsFieldJsValueWrapper(Json.parse(callSignalReceipt.data))
+    ))
   }
 
   val SendChatMessageAction = "sendChatMessage"

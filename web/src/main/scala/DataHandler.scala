@@ -20,10 +20,10 @@ class DataHandler(sessionManager: ActorRef) extends RequestHandlerBase(sessionMa
         if (event.endPoint.isGET) {
           log.info("User {} requesting data", userData.name)
           if (event.endPoint.queryStringMap.contains(DataUriParameter)) {
-            val uri: String = event.endPoint.queryStringMap(DataUriParameter)(0)
+            val uri: String = event.endPoint.queryStringMap(DataUriParameter).head
 
             if (event.endPoint.queryStringMap.contains(PublisherParameter)) {
-              val publisher = event.endPoint.queryStringMap(PublisherParameter)(0)
+              val publisher = event.endPoint.queryStringMap(PublisherParameter).head
               log.info("User {} requesting uri {} from publisher {}", userData.name, uri, publisher)
               sendDataFromSessionManagerToClient(RetrievePublishedData(sessionId, publisher, uri), event.response)
             }
@@ -38,7 +38,7 @@ class DataHandler(sessionManager: ActorRef) extends RequestHandlerBase(sessionMa
           }
         }
         else if (event.endPoint.isPUT) {
-          val uri: String = event.endPoint.queryStringMap(PublishUriParameter)(0)
+          val uri: String = event.endPoint.queryStringMap(PublishUriParameter).head
           log.info("User {} uploading data and publishing at {}", userData.name, uri)
           sessionManager ! PublishData(sessionId,
             event.request.content.toString(Charset.forName(DefaultEncoding)),

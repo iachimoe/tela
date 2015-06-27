@@ -35,7 +35,7 @@ object Tela {
   def main(args: Array[String]) {
     val actorSystem = createActorSystem
 
-    val webSocketFrameHandler = actorSystem.actorOf(Props(new WebSocketDataPusher(writeTextToSockets, closeSockets)))
+    val webSocketDataPusher = actorSystem.actorOf(Props(new WebSocketDataPusher(writeTextToSockets, closeSockets)))
 
     val xmppSettings = loadXMPPSettings(actorSystem)
 
@@ -44,7 +44,7 @@ object Tela {
       createDataStoreConnection(loadDataStoreLocation(actorSystem)),
       getSupportedLanguages,
       xmppSettings,
-      webSocketFrameHandler)))
+      webSocketDataPusher)))
 
     startWebServer(actorSystem, configureWebServerRoutes(actorSystem))
   }
@@ -159,7 +159,7 @@ object Tela {
 
     //TODO: This method shouldn't have a side effect...
     if (akkaSettings.debug) {
-      SmackConfiguration.DEBUG_ENABLED = true
+      SmackConfiguration.DEBUG = true
     }
 
     XMPPSettings(akkaSettings.hostname, akkaSettings.port, akkaSettings.domain, akkaSettings.securityMode)
