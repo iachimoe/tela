@@ -36,6 +36,4 @@ object TestData {
   private[datastore] val ICalDataMap = ComplexObject(GenericMediaFileType, Map(
     new URI("http://schema.org/name") -> SimpleObject(List(TikaCoreProperties.TITLE.getName)))
   )
-
-  private[datastore] val JPEGContentType = "image/jpeg"
 }

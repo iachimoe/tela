@@ -69,8 +69,8 @@ class MetadataMapperTest extends AssertionsForJUnit {
     val metadata = Map("Creation-Date" -> "2010-08-08T15:35:33Z")
 
     val result = new MetadataMapper(GenericFileDataMap, Map(
-      JPEGContentType -> ComplexObject(MP3ObjectType, Map(new URI("http://schema.org/dateCreated") -> SimpleObject(List("Creation-Date"), DataType.DateTime))))
-    ).convertMetadataToRDF("http://test", JPEGContentType, metadata, "testHash")
+      MP3ContentType -> ComplexObject(MP3ObjectType, Map(new URI("http://schema.org/dateCreated") -> SimpleObject(List("Creation-Date"), DataType.DateTime))))
+    ).convertMetadataToRDF("http://test", MP3ContentType, metadata, "testHash")
 
     assertSingleDateObject("2010-08-08T15:35:33", result, new URI("http://test"), new URI("http://schema.org/dateCreated"))
   }
