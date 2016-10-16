@@ -20,7 +20,7 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
   private val TestPassword = "myPass"
   private val TestSessionId = "aaaaaaaaa"
   private val TestXMPPSettings = XMPPSettings("localhost", 5222, "example.com", "disabled")
-  private val TestWebSocketIds = Set("aaaaa", "bbbbb");
+  private val TestWebSocketIds = Set("aaaaa", "bbbbb")
 
   private val Languages = LanguageInfo(Map("en" -> "English", "es" -> "Spanish"), DefaultLanguage)
 
@@ -263,6 +263,34 @@ class SessionManagerTest extends AssertionsForJUnit with MockitoSugar {
   @Test def chatMessageReceived(): Unit = {
     loginAndAssertThatWebsocketsAreNotifiedOfEvent(PushChatMessageToWebSockets(ChatMessageReceipt("foo@bar.net", "message"), TestWebSocketIds),
       () => sessionListener.chatMessageReceived("foo@bar.net", "message"))
+  }
+
+  @Test def storeMediaItem(): Unit = {
+    loginAndSendMessage(StoreMediaItem(TestSessionId, "tempFile", None))
+    verify(dataStoreConnection).storeMediaItem("tempFile", None)
+  }
+
+  @Test def storeMediaItemWithFilename(): Unit = {
+    loginAndSendMessage(StoreMediaItem(TestSessionId, "tempFile", Some("myFile.txt")))
+    verify(dataStoreConnection).storeMediaItem("tempFile", Some("myFile.txt"))
+  }
+
+  @Test def retrieveMediaItem(): Unit = {
+    when(dataStoreConnection.retrieveMediaItem("thisIsAHash")).thenReturn(Some("/my/file"))
+    assertEquals(Some("/my/file"), loginAndSendMessageExpectingResponse[Option[String]](RetrieveMediaItem(TestSessionId, "thisIsAHash")))
+  }
+
+  @Test def sparqlQuery(): Unit = {
+    val sampleSparqlQuery = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
+    when(dataStoreConnection.runSPARQLQuery(sampleSparqlQuery)).thenReturn("[]")
+    assertEquals("[]", loginAndSendMessageExpectingResponse[String](SPARQLQuery(TestSessionId, sampleSparqlQuery)))
+  }
+
+  @Test def textSearch(): Unit = {
+    val searchResult: List[String] = List("result1", "result2")
+    val query: String = "blah"
+    when(dataStoreConnection.textSearch(query)).thenReturn(searchResult)
+    assertEquals(TextSearchResult(searchResult), loginAndSendMessageExpectingResponse[TextSearchResult](TextSearch(TestSessionId, query)))
   }
 
   private def loginAndAssertThatWebsocketsAreNotifiedOfEvent(expectedMessage: AnyRef, executeEvent: () => Unit): Unit = {

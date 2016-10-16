@@ -28,7 +28,7 @@ class AppHandlerTest extends SockoHandlerTestBase {
   }
 
   @Test def notFoundErrorForUnknownApp(): Unit = {
-    initialiseTestActorAndProbe("NonExistent", Some(new UserData(TestUsername, DefaultLanguage)))
+    initialiseTestActorAndProbe("NonExistent", Some(UserData(TestUsername, DefaultLanguage)))
 
     val event = createHttpRequestEvent(HttpMethod.GET, "/apps/" + "NonExistent", Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))
     handler ! event
@@ -38,7 +38,7 @@ class AppHandlerTest extends SockoHandlerTestBase {
   }
 
   @Test def languageFallsBackToEnglishForMissingStrings(): Unit = {
-    initialiseTestActorAndProbe(TestAppName, Some(new UserData(TestUsername, "es")))
+    initialiseTestActorAndProbe(TestAppName, Some(UserData(TestUsername, "es")))
 
     val event: HttpRequestEvent = createHttpRequestEvent(HttpMethod.GET, MainPageHandler.WebAppRoot,
       Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))

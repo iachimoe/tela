@@ -11,11 +11,11 @@ import io.netty.handler.codec.http._
 import org.junit.Assert._
 import org.mashupbots.socko.events.{HttpEventConfig, HttpRequestEvent, HttpResponseMessage}
 import org.mockito.ArgumentMatcher
-import org.mockito.Matchers._
+import org.mockito.ArgumentMatchers._
 import org.mockito.Mockito._
 import org.scalatest.junit.AssertionsForJUnit
 import org.scalatest.mock.MockitoSugar
-import play.api.libs.json.Json
+import play.api.libs.json.{JsObject, Json}
 import tela.web.SessionManager.GetSession
 
 import scala.collection.JavaConversions._
@@ -45,7 +45,7 @@ class SockoHandlerTestBase extends AssertionsForJUnit with MockitoSugar {
         val sessionRetriever: PartialFunction[Any, TestActor.AutoPilot] = {
           case GetSession(TestSessionId) =>
             if (shouldReturnUserData) {
-              sender ! Some(new UserData(TestUsername, DefaultLanguage))
+              sender ! Some(UserData(TestUsername, DefaultLanguage))
               KeepRunning
             }
             else {
@@ -62,7 +62,7 @@ class SockoHandlerTestBase extends AssertionsForJUnit with MockitoSugar {
 
   protected def createHttpRequestEvent(httpMethod: HttpMethod, requestPath: String, headers: Map[String, String] = Map(), content: String = ""): HttpRequestEvent = {
     val httpRequest: DefaultFullHttpRequest = createHttpRequest(httpMethod, requestPath, headers, content)
-    new HttpRequestEvent(channelHandlerContext, httpRequest, new HttpEventConfig(TestHostname, 0, 0, List[String](), None))
+    HttpRequestEvent(channelHandlerContext, httpRequest, HttpEventConfig(TestHostname, 0, 0, List[String](), None))
   }
 
   protected def createHttpRequest(httpMethod: HttpMethod, requestPath: String, headers: Map[String, String], content: String = ""): DefaultFullHttpRequest = {
@@ -95,12 +95,24 @@ class SockoHandlerTestBase extends AssertionsForJUnit with MockitoSugar {
   }
 
   protected def assertResponseBody(expected: String): Unit = {
-    verify(channelHandlerContext).writeAndFlush(argThat(new HttpResponseBodyMatcher(expected)))
+    assertResponseBody(new HttpResponseBodyMatcher(expected))
+  }
+
+  protected def assertResponseBodyStartsWith(expected: String): Unit = {
+    assertResponseBody(new HttpResponseBodyStartsWithMatcher(expected))
+  }
+
+  private def assertResponseBody(matcher: ArgumentMatcher[DefaultFullHttpResponse]): Unit = {
+    verify(channelHandlerContext).writeAndFlush(argThat(matcher))
     assertTrue(handler.isTerminated)
   }
 
-  private class HttpResponseBodyMatcher(private val expectedBody: String) extends ArgumentMatcher[Cookie] {
-    override def matches(argument: Any): Boolean = {
+  protected def assertResponseBody(expected: JsObject): Unit = {
+    assertResponseBody(expected.toString())
+  }
+
+  private class HttpResponseBodyMatcher(private val expectedBody: String) extends ArgumentMatcher[DefaultFullHttpResponse] {
+    override def matches(argument: DefaultFullHttpResponse): Boolean = {
       argument match {
         case response: DefaultFullHttpResponse => expectedBody.contentEquals(new String(response.content().array()))
         case _ => false
@@ -108,4 +120,12 @@ class SockoHandlerTestBase extends AssertionsForJUnit with MockitoSugar {
     }
   }
 
+  private class HttpResponseBodyStartsWithMatcher(private val expectedBody: String) extends ArgumentMatcher[DefaultFullHttpResponse] {
+    override def matches(argument: DefaultFullHttpResponse): Boolean = {
+      argument match {
+        case response: DefaultFullHttpResponse => new String(response.content().array()).startsWith(expectedBody)
+        case _ => false
+      }
+    }
+  }
 }

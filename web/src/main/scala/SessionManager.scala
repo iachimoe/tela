@@ -42,17 +42,25 @@ object SessionManager {
 
   case class SendChatMessage(sessionId: String, user: String, data: String)
 
-  private def generateRandomString: String = {
+  case class StoreMediaItem(sessionId: String, temporaryFileLocation: String, originalFileName: Option[String])
+
+  case class RetrieveMediaItem(sessionId: String, hash: String)
+
+  case class SPARQLQuery(sessionId: String, query: String)
+
+  case class TextSearch(sessionId: String, query: String)
+
+  private def generateUUID: String = {
     UUID.randomUUID.toString
   }
 }
 
-class SessionManager(private val createXMPPConnection: (String, String, XMPPSettings, XMPPSessionListener) => Either[LoginFailure, XMPPSession],
-                     private val createDataStoreConnection: (String, XMPPSession) => DataStoreConnection,
-                     private val languages: Map[String, String],
-                     private val xmppSettings: XMPPSettings,
-                     private val webSocketDataPusher: ActorRef,
-                     private val generateSessionId: () => String = generateRandomString _) extends Actor with ActorLogging {
+class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSessionListener) => Either[LoginFailure, XMPPSession],
+                     createDataStoreConnection: (String, XMPPSession) => DataStoreConnection,
+                     languages: Map[String, String],
+                     xmppSettings: XMPPSettings,
+                     webSocketDataPusher: ActorRef,
+                     generateSessionId: () => String = generateUUID _) extends Actor with ActorLogging {
 
   private var sessions = Map[String, SessionInfo]()
 
@@ -73,6 +81,10 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
     case RetrievePublishedData(sessionId, user, uri) => retrievePublishedData(sessionId, user, uri)
     case SendCallSignal(sessionId, user, data) => sendCallSignal(sessionId, user, data)
     case SendChatMessage(sessionId, user, message) => sendChatMessage(sessionId, user, message)
+    case StoreMediaItem(sessionId, fileLocation, originalFileName) => storeMediaItem(sessionId, fileLocation, originalFileName)
+    case RetrieveMediaItem(sessionId, hash) => retrieveMediaItem(sessionId, hash)
+    case SPARQLQuery(sessionId, query) => runSPARQLQuery(sessionId, query)
+    case TextSearch(sessionId, query) => runTextSearch(sessionId, query)
   }
 
   private def publishData(sessionId: String, json: String, uri: String): Unit = {
@@ -84,6 +96,16 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
   private def retrieveData(sessionId: String, uri: String): Unit = {
     log.debug("Requesting data for uri {} for user with session {}", uri, sessionId)
     sender ! sessions(sessionId).dataStoreConnection.retrieveJSON(uri)
+  }
+
+  private def runSPARQLQuery(sessionId: String, query: String): Unit = {
+    log.debug("Running SPARQL query {} for user with session {}", query, sessionId)
+    sender ! sessions(sessionId).dataStoreConnection.runSPARQLQuery(query)
+  }
+
+  private def runTextSearch(sessionId: String, query: String): Unit = {
+    log.debug("Running text search {} for user with session {}", query, sessionId)
+    sender ! TextSearchResult(sessions(sessionId).dataStoreConnection.textSearch(query))
   }
 
   private def retrievePublishedData(sessionId: String, user: String, uri: String): Unit = {
@@ -109,6 +131,16 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
   def changePassword(sessionId: String, oldPassword: String, newPassword: String): Unit = {
     log.debug("Attempting to change password for user with session {}", sessionId)
     sender ! sessions(sessionId).xmppSession.changePassword(oldPassword, newPassword)
+  }
+
+  private def storeMediaItem(sessionId: String, fileLocation: String, originalFileName: Option[String]): Unit = {
+    log.debug("Storing media item for user with session {}", sessionId)
+    sessions(sessionId).dataStoreConnection.storeMediaItem(fileLocation, originalFileName)
+  }
+
+  private def retrieveMediaItem(sessionId: String, hash: String): Unit = {
+    log.debug("Requesting media item with hash {} for user with session {}", hash, sessionId)
+    sender ! sessions(sessionId).dataStoreConnection.retrieveMediaItem(hash)
   }
 
   private def unregisterWebSocket(sessionId: String, webSocketId: String): Unit = {
@@ -205,5 +237,4 @@ class SessionManager(private val createXMPPConnection: (String, String, XMPPSett
       webSocketDataPusher ! PushChatMessageToWebSockets(ChatMessageReceipt(user, message), sessions(sessionId).webSockets)
     }
   }
-
 }

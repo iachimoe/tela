@@ -114,7 +114,7 @@
 
             peerConnection.oniceconnectionstatechange = function () {
                 if (peerConnection.iceConnectionState == 'disconnected' || peerConnection.iceConnectionState == 'closed') {
-                    stream.stop();
+                    stream.getTracks().forEach(function (track) { track.stop(); });
                     handleEndOfCall();
                 }
             };
@@ -162,7 +162,7 @@
         }
         else {
             return {
-                audio: true, video: true //TODO see video constraints including camera facing
+                audio: true, video: { facingMode: "user" }
             }
         }
     }
@@ -175,10 +175,10 @@
 
     function handleBeginningOfCall(stream, localStream) {
         document.getElementById("endCallButton").style.visibility = "visible";
-        showVideoElements();
-        playVideo("remoteVideo", stream);
 
         if (!isAudioOnly()) {
+            showVideoElements();
+            playVideo("remoteVideo", stream);
             playVideo("localVideo", localStream);
         }
     }

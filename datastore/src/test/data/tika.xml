@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<properties>
+    <parsers>
+        <parser class="org.apache.tika.parser.DefaultParser" />
+        <parser class="tela.datastore.ICalParser">
+            <mime>text/calendar</mime>
+        </parser>
+    </parsers>
+</properties>

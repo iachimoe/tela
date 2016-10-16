@@ -13,10 +13,14 @@ import scala.io.Source
 abstract class RequestHandlerBase(protected val sessionManager: ActorRef) extends Actor with ActorLogging {
   protected def getDocumentRoot: String
 
-  protected def sendResponse(response: HttpResponseMessage, headers: Map[String, String], content: String, status: HttpResponseStatus = HttpResponseStatus.OK): Unit = {
+  protected def sendByteArrayResponse(response: HttpResponseMessage, headers: Map[String, String], content: Array[Byte], status: HttpResponseStatus = HttpResponseStatus.OK): Unit = {
     response.status = status
     for ((name, value) <- headers) response.headers.put(name, value)
     response.write(content)
+  }
+
+  protected def sendResponse(response: HttpResponseMessage, headers: Map[String, String], content: String, status: HttpResponseStatus = HttpResponseStatus.OK): Unit = {
+    sendByteArrayResponse(response, headers, content.getBytes(), status)
   }
 
   protected def performActionOnValidSessionOrSendUnauthorizedError(event: HttpRequestEvent, action: ((String, UserData) => Unit)): Unit = {

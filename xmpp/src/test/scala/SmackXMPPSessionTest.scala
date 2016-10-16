@@ -20,7 +20,7 @@ import org.jivesoftware.smackx.commands.packet.AdHocCommandData
 import org.jivesoftware.smackx.iqregister.packet.Registration
 import org.junit.Assert._
 import org.junit.{Before, Test}
-import org.mockito.Matchers._
+import org.mockito.ArgumentMatchers._
 import org.mockito.Mockito._
 import org.mockito.{ArgumentCaptor, ArgumentMatcher}
 import org.scalatest.junit.AssertionsForJUnit
@@ -369,7 +369,7 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   private class ChatMessagePacketMatcher(private val expected: Message) extends ArgumentMatcher[Message] {
-    override def matches(argument: scala.Any): Boolean = {
+    override def matches(argument: Message): Boolean = {
       argument match {
         case actual: Message =>
           expected.getTo == actual.getTo && expected.getBody == actual.getBody
@@ -379,7 +379,7 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   private class IQPacketMatcher(private val expected: IQ) extends ArgumentMatcher[IQ] {
-    override def matches(argument: scala.Any): Boolean = {
+    override def matches(argument: IQ): Boolean = {
       argument match {
         case actual: IQ =>
           expected.getTo == actual.getTo && expected.getType == actual.getType &&
@@ -390,7 +390,7 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   private class RegistrationMatcher(private val expected: Registration) extends ArgumentMatcher[Registration] {
-    override def matches(argument: Any): Boolean = {
+    override def matches(argument: Registration): Boolean = {
       argument match {
         case actual: Registration =>
           expected.getType == actual.getType && mapAsScalaMap(expected.getAttributes) == mapAsScalaMap(actual.getAttributes)
@@ -400,7 +400,7 @@ class SmackXMPPSessionTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   private class PresenceMatcher(private val expected: Presence) extends ArgumentMatcher[Presence] {
-    override def matches(argument: Any): Boolean = {
+    override def matches(argument: Presence): Boolean = {
       argument match {
         case actual: Presence => expected.getType == actual.getType &&
           expected.getMode == actual.getMode &&

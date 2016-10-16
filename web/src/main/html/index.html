@@ -59,7 +59,9 @@
 
         function getValueOfJsonLdField(data, field) {
             var JSON_LD_VALUE = "@value";
-            return data[field][0][JSON_LD_VALUE];
+            var dataContainer = data[field];
+            if (dataContainer == null) return null;
+            else return dataContainer[0][JSON_LD_VALUE];
         }
 
         function createJsonLdValue(value) {

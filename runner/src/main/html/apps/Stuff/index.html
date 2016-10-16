@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html>
+
+<script>
+    function loadMediaItemInfo() {
+        var textQuery = document.getElementById("searchText").value;
+
+        if (textQuery == "") {
+            var query = "PREFIX schema: <http://schema.org/>\nDESCRIBE ?s WHERE {?s schema:encodingFormat ?o }";
+
+            parent.makeRESTRequest("/data?query=" + query, function (responseText) {
+                populateMediaInfoTable(JSON.parse(responseText));
+            });
+        } else {
+            parent.makeRESTRequest("/data?text=" + textQuery, function (responseText) {
+                var files = JSON.parse(responseText)["results"];
+
+                var query = "PREFIX schema: <http://schema.org/>\nDESCRIBE ?s WHERE { { ?s schema:alternateName ?o . VALUES ?o {";
+                for (var i = 0; i < files.length; i++) {
+                    query += " \"" + files[i] + "\" ";
+                }
+                query += "} } UNION {?s schema:encodingFormat ?o . {?s ?a ?b} . FILTER regex(?b, \".*" + textQuery + ".*\", \"i\") } }";
+
+                parent.makeRESTRequest("/data?query=" + query, function (responseText2) {
+                    populateMediaInfoTable(JSON.parse(responseText2));
+                });
+            });
+        }
+    }
+
+    function populateMediaInfoTable(allMediaItems) {
+        var SCHEMA_ROOT = "http://schema.org/";
+
+        var tbody = document.createElement('tbody');
+
+        for (var i = 0; i < allMediaItems.length; i++) {
+            var currentMediaItem = allMediaItems[i];
+            var encodingFormat = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "encodingFormat");
+            if (encodingFormat == null) continue;
+
+            var fileLocation = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "alternateName");
+
+            var tr = document.createElement('tr');
+
+            var name = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "name");
+            var descriptionTd = document.createElement('td');
+            if (name == null) {
+                descriptionTd.innerHTML = encodingFormat
+            } else {
+                descriptionTd.innerHTML = name;
+            }
+            tr.appendChild(descriptionTd);
+
+            var contentTd = document.createElement('td');
+
+            if (encodingFormat == "audio/mp4") {
+                var audioPlayer = document.createElement("audio");
+                audioPlayer.controls = true;
+                audioPlayer.src = "/data?hash=" + fileLocation;
+                audioPlayer.style.zIndex = "-1";
+                contentTd.appendChild(audioPlayer);
+            } else {
+                var link = document.createElement('a');
+                link.href="#";
+                link.innerHTML = "{{view}}";
+
+                link.addEventListener('click', displayContentInLightbox(encodingFormat, fileLocation));
+                contentTd.appendChild(link);
+            }
+            tr.appendChild(contentTd);
+            tbody.appendChild(tr);
+        }
+
+        var oldChildNodes = document.getElementById("mediaItemsTable").childNodes;
+        for (var j = 0; j < oldChildNodes.length; j++) {
+            document.getElementById("mediaItemsTable").removeChild(oldChildNodes[j]);
+        }
+
+        document.getElementById("mediaItemsTable").appendChild(tbody);
+    }
+
+    function displayContentInLightbox(encodingFormat, fileLocation) {
+        return function(e) {
+            if (encodingFormat == "image/jpeg") {
+                var image = document.createElement('img');
+                image.src = "/data?hash=" + fileLocation;
+                showElementInLightbox(image);
+            } else if (encodingFormat == "video/mp4") {
+                var video = document.createElement('video');
+                video.setAttribute('controls', '');
+                var source = document.createElement("source");
+                source.src = "/data?hash=" + fileLocation;
+                video.appendChild(source);
+
+                video.addEventListener('click', function (event) {
+                    event.stopPropagation();
+                });
+
+                showElementInLightbox(video);
+            } else if (encodingFormat == "text/csv") {
+                parent.makeRESTRequest("/data?hash=" + fileLocation,
+                        function (responseText) {
+                            showElementInLightbox(createTableFromCSVContent(responseText));
+                        },
+                        function handleFailure() {
+                        });
+            } else {
+                var iframe = document.createElement('iframe');
+                iframe.src = "/data?hash=" + fileLocation;
+                showElementInLightbox(iframe);
+            }
+        };
+    }
+
+    function createTableFromCSVContent(csvContent) {
+        var lines = csvContent.split("\n");
+        var output = [];
+        var i;
+
+        for (i = 0; i < lines.length; i++)
+            output.push("<tr><td>"
+                    + lines[i].slice(0,-1).split(",").join("</td><td>")
+                    + "</td></tr>");
+
+        var table = document.createElement("table");
+        table.innerHTML = output.join("");
+        return table;
+    }
+
+    function showElementInLightbox(element) {
+        var oldChildNodes = document.getElementById("lightbox_content").childNodes;
+        for (var j = 0; j < oldChildNodes.length; j++) {
+            document.getElementById("lightbox_content").removeChild(oldChildNodes[j]);
+        }
+
+        element.style.width = "100%";
+        element.style.height = "100%";
+        document.getElementById("lightbox_content").appendChild(element);
+        document.getElementById('lightbox').style.display='inline';
+    }
+
+    function uploadFile() {
+        var xhr = new XMLHttpRequest();
+        xhr.open("PUT", "/data", true);
+
+        xhr.upload.addEventListener("progress", function(e) {
+            var percentComplete = (100 - (e.loaded / e.total * 100));
+            document.getElementById("uploadStatus").innerHTML = percentComplete + "%"
+        }, false);
+
+        xhr.onreadystatechange = function(e) {
+            if (xhr.readyState == 4) {
+                if (xhr.status == 200) {
+                    document.getElementById("uploadStatus").innerHTML = "{{uploadSucceeded}}"
+                } else {
+                    document.getElementById("uploadStatus").innerHTML = "{{uploadFailed}}"
+                }
+                document.getElementById("uploadButton").disabled = true;
+            }
+        };
+
+        var file = document.getElementById("fileSelector").files[0];
+        xhr.setRequestHeader("X-Filename", file.name);
+        xhr.send(file);
+    }
+
+    function inputFileSelected() {
+        document.getElementById("uploadButton").disabled = false;
+        document.getElementById("uploadStatus").innerHTML = "";
+    }
+</script>
+
+<style>
+    .lightbox {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, .8);
+        z-index: 1;
+    }
+
+    .lightbox_table {
+        width: 100%;
+        height: 100%;
+        padding: 20px 0;
+    }
+
+    #lightbox_content {
+        margin: auto;
+    }
+</style>
+
+<body>
+
+<!-- LIGHTBOX CODE BEGIN -->
+
+<div id="lightbox" class="lightbox" style="display:none"
+     onclick="document.getElementById('lightbox').style.display='none';">
+    <div class="lightbox_table">
+        <div id="lightbox_content" style="width:90%; height:90%; background-color:white; border:5px solid black;">
+        </div>
+    </div>
+</div>
+
+<!-- LIGHTBOX CODE END -->
+
+<input id="fileSelector" type="file" onchange="inputFileSelected()" />
+<button id="uploadButton" type="button" onclick="uploadFile()" disabled>{{upload}}</button><br />
+<span id="uploadStatus"></span><br />
+
+<span>
+    <input id="searchText" onkeydown="if (event.keyCode == 13) loadMediaItemInfo()"/>
+    <button type="button" onclick="loadMediaItemInfo()">{{search}}</button><br />
+</span>
+
+<div id="mediaItems">
+    <table id="mediaItemsTable"></table>
+</div>
+</body>
+</html>

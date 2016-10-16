@@ -1,0 +1,198 @@
+{
+  "generic": {
+    "mediaItemType": "http://schema.org/MediaObject",
+    "children": {
+      "http://schema.org/alternateName": {
+        "properties": [
+          "hashPredicate"
+        ],
+        "dataType": "Text"
+      },
+      "http://schema.org/encodingFormat": {
+        "properties": [
+          "fileFormatPredicate"
+        ],
+        "dataType": "Text"
+      }
+    }
+  },
+
+  "dataMappings": [
+    {
+      "types": [
+        "text/plain",
+        "text/csv",
+        "application/pdf"
+      ],
+      "conf": {
+        "mediaItemType": "http://schema.org/MediaObject",
+        "children": {
+          "http://schema.org/name": {
+            "properties": [
+              "resourceName"
+            ],
+            "dataType": "Text"
+          }
+        }
+      }
+    },
+    {
+      "types": [
+        "text/html",
+        "application/xhtml+xml"
+      ],
+      "conf": {
+        "mediaItemType": "http://schema.org/MediaObject",
+        "children": {
+          "http://schema.org/name": {
+            "properties": [
+              "dc:title"
+            ],
+            "dataType": "Text"
+          }
+        }
+      }
+    },
+    {
+      "types": [
+        "video/quicktime",
+        "video/x-m4v"
+      ],
+      "conf": {
+        "mediaItemType": "http://schema.org/VideoObject",
+        "children": {
+          "http://schema.org/dateCreated": {
+            "properties": [
+              "Creation-Date"
+            ],
+            "dataType": "DateTime"
+          },
+          "http://schema.org/name": {
+            "properties": [
+              "dc:title"
+            ],
+            "dataType": "Text"
+          },
+          "http://schema.org/author": {
+            "mediaItemType": "http://schema.org/Person",
+            "children": {
+              "http://schema.org/name": {
+                "properties": [
+                  "xmpDM:artist"
+                ],
+                "dataType": "Text"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "types": [
+        "audio/mpeg",
+        "audio/mp4",
+        "video/mp4"
+      ],
+      "conf": {
+        "mediaItemType": "http://schema.org/AudioObject",
+        "children": {
+          "http://schema.org/genre": {
+            "properties": [
+              "xmpDM:genre"
+            ],
+            "dataType": "Text"
+          },
+          "http://schema.org/name": {
+            "properties": [
+              "dc:title"
+            ],
+            "dataType": "Text"
+          },
+          "http://schema.org/author": {
+            "mediaItemType": "http://schema.org/Person",
+            "children": {
+              "http://schema.org/name": {
+                "properties": [
+                  "xmpDM:artist"
+                ],
+                "dataType": "Text"
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "types": ["image/jpeg"],
+      "conf": {
+        "mediaItemType": "http://schema.org/ImageObject",
+        "children": {
+          "http://schema.org/dateCreated": {
+            "properties": [
+              "Creation-Date"
+            ],
+            "dataType": "DateTime"
+          },
+          "http://schema.org/contentLocation": {
+            "mediaItemType": "http://schema.org/Place",
+            "children": {
+              "http://schema.org/geo": {
+                "mediaItemType": "http://schema.org/GeoCoordinates",
+                "children": {
+                  "http://www.opengis.net/ont/geosparql#asWKT": {
+                    "properties": [
+                      "GPS Latitude", "GPS Longitude"
+                    ],
+                    "dataType": "Geo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "types": ["text/calendar"],
+      "conf": {
+        "mediaItemType": "http://schema.org/Event",
+        "children": {
+          "http://schema.org/name": {
+            "properties": [
+              "dc:title"
+            ],
+            "dataType": "Text"
+          },
+          "http://schema.org/description": {
+            "properties": [
+              "dc:description"
+            ],
+            "dataType": "Text"
+          },
+          "http://schema.org/startDate": {
+            "properties": [
+              "xmp:MetadataDate"
+            ],
+            "dataType": "DateTime"
+          },
+          "http://schema.org/location": {
+            "mediaItemType": "http://schema.org/Place",
+            "children": {
+              "http://schema.org/geo": {
+                "mediaItemType": "http://schema.org/GeoCoordinates",
+                "children": {
+                  "http://www.opengis.net/ont/geosparql#asWKT": {
+                    "properties": [
+                      "geo:lat", "geo:long"
+                    ],
+                    "dataType": "Geo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -24,6 +24,17 @@ object JSONConversions {
       SelectedLanguageKey -> languages.selected)
   }
 
+  // TEXT SEARCH
+  val TextSearchResultsKey = "results"
+
+  case class TextSearchResult(files: List[String])
+
+  implicit val textSearchResultWrites = new Writes[TextSearchResult] {
+    override def writes(result: TextSearchResult) = Json.obj(
+      TextSearchResultsKey -> result.files
+    )
+  }
+
   // CHANGE PASSWORD
   val OldPasswordKey = "oldPassword"
   val NewPasswordKey = "newPassword"
@@ -46,7 +57,7 @@ object JSONConversions {
       ActionKey -> AddContactsAction,
       DataKey -> Json.arr(addContacts.contacts.map {
         (info: ContactInfo) => Json.toJsFieldJsValueWrapper(Map(ContactKey -> info.jid, PresenceKey -> info.presence.toString.toLowerCase))
-      }.toSeq: _*))
+      }: _*))
   }
 
   case class PresenceUpdate(contact: ContactInfo)

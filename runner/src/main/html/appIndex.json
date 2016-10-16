@@ -1,13 +1,18 @@
 {
     "apps": [
         {
+            "name": "chat",
+            "address": "apps/Chat/index.html",
+            "isRight": false
+        },
+        {
             "name": "phone",
             "address": "apps/Phone/index.html",
             "isRight": false
         },
         {
-            "name": "chat",
-            "address": "apps/Chat/index.html",
+            "name": "myStuff",
+            "address": "apps/Stuff/index.html",
             "isRight": false
         },
         {
@@ -39,7 +44,8 @@
             "settings": "Settings",
             "contactList": "Contact List",
             "phone": "Phone",
-            "chat": "Chat"
+            "chat": "Chat",
+            "myStuff": "My Stuff"
         },
         "es": {
             "displayProfile": "Mostrar Perfil",
@@ -47,7 +53,8 @@
             "settings": "Ajustes",
             "contactList": "Contactos",
             "phone": "Teléfono",
-            "chat": "Platicar"
+            "chat": "Platicar",
+            "myStuff": "Mis Cosas"
         }
     }
 }
