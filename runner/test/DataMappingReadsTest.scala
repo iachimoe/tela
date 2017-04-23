@@ -1,5 +1,3 @@
-package tela.runner
-
 import java.net.URI
 
 import org.junit.Assert._
@@ -7,7 +5,7 @@ import org.junit.Test
 import org.scalatest.junit.AssertionsForJUnit
 import play.api.libs.json.Json
 import tela.baseinterfaces.{ComplexObject, DataStoreConnection, SimpleObject}
-import tela.runner.DataMappingReads._
+import DataMappingReads._
 
 class DataMappingReadsTest extends AssertionsForJUnit {
   @Test def mp3(): Unit = {

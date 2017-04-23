@@ -24,13 +24,16 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
   private val BaseTestDir = TestDataRoot + "/store"
   private val NonExistentDataStore = TestDataRoot + "/nonExistent"
 
-  private val TestHtmlFile = TestDataRoot + "/testHTMLFile.html"
+  private val TestHtmlFileName = "testHTMLFile.html"
+  private val TestHtmlFile = TestDataRoot + "/" + TestHtmlFileName
   private val HashOfTestHtmlFile = "85b94c9ff01e60d63fa7005bf2c9625f4a437024"
 
-  private val TestTextFile = TestDataRoot + "/testTextFile.txt"
+  private val TestTextFileName = "testTextFile.txt"
+  private val TestTextFile = TestDataRoot + "/" + TestTextFileName
   private val HashOfTestTextFile = "09fac8dbfd27bd9b4d23a00eb648aa751789536d"
 
-  private val TestMP3 = TestDataRoot + "/testMP3.mp3"
+  private val TestMP3FileName = "testMP3.mp3"
+  private val TestMP3 = TestDataRoot + "/" + TestMP3FileName
   private val HashOfTestMP3 = "a82e3d27ec0184d28b0de85a70242e9985213143"
 
   private val TestUUID = "aaaaaaaaa"
@@ -139,6 +142,28 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
                                   |    }
                                   |]""".stripMargin
 
+  private val TestTextFileMetadataAsJSON = s"""[
+                                              |    {
+                                              |        "@id": "$URNWithTestUUID",
+                                              |        "@type": [ "$GenericMediaFileType" ],
+                                              |        "$HashPredicate": [
+                                              |            {
+                                              |                "@value": "$HashOfTestTextFile"
+                                              |            }
+                                              |        ],
+                                              |        "$FileFormatPredicate": [
+                                              |            {
+                                              |                "@value": "$PlainTextContentType"
+                                              |            }
+                                              |        ],
+                                              |        "http://schema.org/name": [
+                                              |            {
+                                              |                "@value": "$TestTextFileName"
+                                              |            }
+                                              |        ]
+                                              |    }
+                                              |]""".stripMargin
+
   val TestProfileInfoAsXML = <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
     <rdf:Description rdf:about={TestPublicationURI}>
       <rdf:type rdf:resource="http://xmlns.com/foaf/0.1/Person"/>
@@ -155,7 +180,7 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
     recursiveDelete(new File(NonExistentDataStore))
     xmppSession = mock[XMPPSession]
     connection = DataStoreConnectionImpl.getDataStore(BaseTestDir, TestUser, GenericFileDataMap,
-      Map(MP3ContentType -> MP3FileDataMap, ICalContentType -> ICalDataMap),
+      Map(MP3ContentType -> MP3FileDataMap, ICalContentType -> ICalDataMap, PlainTextContentType -> PlainTextDataMap),
       xmppSession, TestTikaConfigFile, () => TestUUID)
   }
 
@@ -175,7 +200,7 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test(expected = classOf[IllegalArgumentException]) def nonExistantDataStore(): Unit = {
-    DataStoreConnectionImpl.getDataStore(NonExistentDataStore, TestUser, ComplexObject(new URI(""), Map()), Map(), xmppSession, TestTikaConfigFile)
+    DataStoreConnectionImpl.getDataStore(NonExistentDataStore, TestUser, ComplexObject(new URI(""), Map()), Map(), xmppSession, TestTikaConfigFile, () => "")
   }
 
   @Test def retrieveJSONFromEmptyStore(): Unit = {
@@ -238,47 +263,47 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def storeMediaItem(): Unit = {
-    val tempFile = createTempFileAndStoreContent(TestHtmlFile)
+    val tempFile = createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName)
     assertTrue(new File(TestMediaItemsRoot, HashOfTestHtmlFile).exists())
     assertFalse(tempFile.exists())
   }
 
   @Test def storeMultipleMediaItems(): Unit = {
-    createTempFileAndStoreContent(TestHtmlFile)
-    createTempFileAndStoreContent(TestMP3)
-    createTempFileAndStoreContent(TestMP3) //verifying that storing the same file twice won't cause an exception
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName)
+    createTempFileAndStoreContent(TestMP3, TestMP3FileName)
+    createTempFileAndStoreContent(TestMP3, TestMP3FileName) //verifying that storing the same file twice won't cause an exception
 
     assertTrue(new File(TestMediaItemsRoot, HashOfTestHtmlFile).exists())
     assertTrue(new File(TestMediaItemsRoot, HashOfTestMP3).exists())
   }
 
   @Test def retrieveMediaItem(): Unit = {
-    createTempFileAndStoreContent(TestHtmlFile)
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName)
     assertEquals(Some(new File(TestMediaItemsRoot, HashOfTestHtmlFile).getAbsolutePath), connection.retrieveMediaItem(HashOfTestHtmlFile))
   }
 
   @Test def retrieveNonExistentMediaItem(): Unit = {
-    createTempFileAndStoreContent(TestHtmlFile) //adding this file to ensure that data store exists
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName) //adding this file to ensure that data store exists
     assertEquals(None, connection.retrieveMediaItem("notARealHash"))
   }
 
   @Test def prohibitAttemptsToRetrieveFilesFromOtherFolders(): Unit = {
-    createTempFileAndStoreContent(TestHtmlFile) //adding this file to ensure that data store exists
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName) //adding this file to ensure that data store exists
     assertEquals(None, connection.retrieveMediaItem("../../.gitignore"))
   }
 
   @Test def storeUUIDAndHashAndFileFormatOfMediaItemsInRDFStore(): Unit = {
-    createTempFileAndStoreContent(TestHtmlFile)
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName)
     assertJSONGraphsAreEqual(TestHTMLFileMetadataAsJSON, connection.retrieveJSON(URNWithTestUUID))
   }
 
   @Test def storeMetadataFromMP3FileInRDFStore(): Unit = {
-    createTempFileAndStoreContent(TestMP3)
+    createTempFileAndStoreContent(TestMP3, TestMP3FileName)
     assertJSONGraphsAreEqual(TestMP3FileMetadataAsJSON, connection.retrieveJSON(URNWithTestUUID))
   }
 
   @Test def sparqlQueryWithEmptyResult(): Unit = {
-    assertEquals("[ ]", connection.runSPARQLQuery("CONSTRUCT { ?s ?p ?o } WHERE {?s ?p ?o }"))
+    assertEquals("[]", connection.runSPARQLQuery("CONSTRUCT { ?s ?p ?o } WHERE {?s ?p ?o }"))
   }
 
   @Test def sparqlQuery(): Unit = {
@@ -287,12 +312,7 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
     val result = connection.runSPARQLQuery("PREFIX foaf: <http://xmlns.com/foaf/0.1/>\n" +
       "CONSTRUCT { ?s foaf:familyName ?o } WHERE {?s foaf:familyName ?o}")
 
-    assertEquals("""[ {
-                   |  "@id" : "http://tela/profileInfo",
-                   |  "http://xmlns.com/foaf/0.1/familyName" : [ {
-                   |    "@value" : "Foo"
-                   |  } ]
-                   |} ]""".stripMargin, result)
+    assertEquals("""[{"@id":"http://tela/profileInfo","http://xmlns.com/foaf/0.1/familyName":[{"@value":"Foo"}]}]""", result)
   }
 
   @Test def geoSparql(): Unit = {
@@ -318,21 +338,26 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   @Test def ical(): Unit = {
-    createTempFileAndStoreContent(TestIcalFileWithEvent, Some("meetup.ics"))
+    createTempFileAndStoreContent(TestIcalFileWithEvent, TestIcalWithEventFileName)
     assertJSONGraphsAreEqual(TestICalFileMetadataAsJSON, connection.retrieveJSON(URNWithTestUUID))
   }
 
+  @Test def filenameIsStoredIfConfiguredForFileType(): Unit = {
+    createTempFileAndStoreContent(TestTextFile, TestTextFileName)
+    assertJSONGraphsAreEqual(TestTextFileMetadataAsJSON, connection.retrieveJSON(URNWithTestUUID))
+  }
+
   @Test def textIsSearchable(): Unit = {
-    createTempFileAndStoreContent(TestTextFile)
+    createTempFileAndStoreContent(TestTextFile, TestTextFileName)
     assertEquals(List(HashOfTestTextFile), connection.textSearch("hello"))
 
-    createTempFileAndStoreContent(TestHtmlFile)
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName)
     assertEquals(List(HashOfTestTextFile, HashOfTestHtmlFile).sortBy(s => s), connection.textSearch("hello").sortBy(s => s))
 
     assertEquals(List(HashOfTestTextFile), connection.textSearch("world"))
   }
 
-  private def createTempFileAndStoreContent(path: String, originalFileName: Option[String] = None): File = {
+  private def createTempFileAndStoreContent(path: String, originalFileName: String): File = {
     val tempFile = File.createTempFile("aaa", "")
     Files.copy(Paths.get(path), Paths.get(tempFile.getAbsolutePath), StandardCopyOption.REPLACE_EXISTING)
     connection.storeMediaItem(tempFile.getAbsolutePath, originalFileName)

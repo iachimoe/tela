@@ -159,9 +159,10 @@
             }
         };
 
+        var formData = new FormData();
         var file = document.getElementById("fileSelector").files[0];
-        xhr.setRequestHeader("X-Filename", file.name);
-        xhr.send(file);
+        formData.append(file.name, file);
+        xhr.send(formData);
     }
 
     function inputFileSelected() {

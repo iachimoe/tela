@@ -5,17 +5,21 @@ import java.nio.file.{Files, Paths}
 
 import akka.actor.ActorRef
 import akka.testkit.TestActor.NoAutoPilot
-import akka.testkit.{TestActor, TestActorRef}
-import io.netty.handler.codec.http.{ClientCookieEncoder, HttpHeaders, HttpMethod}
 import org.junit.Assert._
 import org.junit.{Before, Test}
-import org.mashupbots.socko.events.HttpResponseStatus
+import play.api.http.{ContentTypes, HeaderNames, Status, Writeable}
+import play.api.inject.guice.GuiceApplicationBuilder
+import play.api.libs.Files.TemporaryFile
 import play.api.libs.json.Json
-import tela.web.JSONConversions.TextSearchResult
+import play.api.mvc.MultipartFormData.FilePart
+import play.api.mvc._
+import play.api.test.Helpers.{contentAsString, contentType, _}
+import play.api.test.{FakeRequest, Helpers}
+import play.api.{Application, Play}
+import tela.web.JSONConversions.{TextSearchResult, _}
 import tela.web.SessionManager._
-import JSONConversions._
 
-class DataHandlerTest extends SockoHandlerTestBase {
+class DataHandlerTest extends SessionManagerClientTestBase {
   val TestUri = "http://tela/profileInfo"
 
   @Before def initialize(): Unit = {
@@ -23,216 +27,217 @@ class DataHandlerTest extends SockoHandlerTestBase {
   }
 
   @Test def notAuthorizedErrorForUserWithoutSession(): Unit = {
-    initialiseTestActorAndProbe(false)
+    initializeTestProbe(false)
 
-    val event = createHttpRequestEvent(HttpMethod.GET, "/data")
-    handler ! event
+    val controller = new DataController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref)
+    val result = controller.retrieveData(TestUri, publisher = None).apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionId)))
 
-    assertEquals(HttpResponseStatus.UNAUTHORIZED, event.response.status)
-    assertResponseBody("")
+    assertEquals(Status.UNAUTHORIZED, status(result)(tela.web.timeout))
   }
 
-  @Test def getData(): Unit = {
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+  @Test def retrieveData(): Unit = {
+    initializeTestProbe(true, (sender: ActorRef) => {
       case RetrieveData(TestSessionId, `TestUri`) =>
         sender ! "[]"
         NoAutoPilot
     })
 
-    val event = createHttpRequestEvent(HttpMethod.GET, "/data?" + DataHandler.DataUriParameter + "=" + TestUri,
-      Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))
+    val controller = new DataController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref)
+    val result = controller.retrieveData(TestUri, publisher = None).apply(
+      FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionId))
+    )
 
-    handler ! event
-
-    assertResponseBody("[]")
-    assertEquals(JsonLdContentType, event.response.contentType.get)
+    assertEquals(Status.OK, status(result)(tela.web.timeout))
+    assertEquals(Some(JsonLdContentType), contentType(result)(tela.web.timeout))
+    assertEquals("[]", contentAsString(result)(tela.web.timeout))
   }
 
-  @Test def requestShouldHaveUriParameter(): Unit = {
-    initialiseTestActorAndProbe(true)
-
-    val event = createHttpRequestEvent(HttpMethod.GET, "/data", Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))
-
-    handler ! event
-
-    assertEquals(HttpResponseStatus.BAD_REQUEST, event.response.status)
-    assertResponseBody("")
-  }
-
-  @Test def putData(): Unit = {
+  @Test def publishData(): Unit = {
     var publishedData: String = null
 
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+    initializeTestProbe(true, (sender: ActorRef) => {
       case PublishData(TestSessionId, dataReceived, TestUri) =>
         publishedData = dataReceived
         NoAutoPilot
     })
 
-    val event = createHttpRequestEvent(HttpMethod.PUT, "/data?" + DataHandler.PublishUriParameter + "=" + TestUri, Map(
-      HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId)),
-      HttpHeaders.Names.CONTENT_TYPE -> JsonLdContentType), "[]")
+    val controller = new DataController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref)
 
-    handler ! event
+    implicit val mat = buildMaterializer()
 
-    assertEquals(HttpResponseStatus.OK, event.response.status)
-    assertResponseBody("")
+    val result = Helpers.call(controller.publishData(TestUri), FakeRequest().
+      withCookies(Cookie(SessionIdCookieName, TestSessionId)).
+      withJsonBody(Json.arr()).
+      withHeaders(CONTENT_TYPE -> JsonLdContentType))
+
+    assertEquals(Status.OK, status(result)(tela.web.timeout))
     assertEquals("[]", publishedData)
   }
 
-  @Test def getDataPublishedByOtherUser(): Unit = {
+  @Test def retrieveDataPublishedByOtherUser(): Unit = {
     val testUri = "http://tela/profileInfo"
     val testPublisher = "publisher"
 
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+    initializeTestProbe(true, (sender: ActorRef) => {
       case RetrievePublishedData(TestSessionId, `testPublisher`, `testUri`) =>
         sender ! "[]"
         NoAutoPilot
     })
 
-    val event = createHttpRequestEvent(HttpMethod.GET,
-      "/data?" + DataHandler.DataUriParameter + "=" + testUri + "&" + DataHandler.PublisherParameter + "=" + testPublisher,
-      Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))
+    val controller = new DataController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref)
+    val result = controller.retrieveData(TestUri, publisher = Some(testPublisher)).apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionId)))
 
-    handler ! event
-
-    assertResponseBody("[]")
-    assertEquals(JsonLdContentType, event.response.contentType.get)
+    assertEquals(Status.OK, status(result)(tela.web.timeout))
+    assertEquals(Some(JsonLdContentType), contentType(result)(tela.web.timeout))
+    assertEquals("[]", contentAsString(result)(tela.web.timeout))
   }
 
   @Test def uploadMediaItem(): Unit = {
     var tempFileLocationReceived: String = null
+    val filename = "myFile.txt"
 
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
-      case StoreMediaItem(TestSessionId, tempFileLocation, None) =>
+    initializeTestProbe(true, (sender: ActorRef) => {
+      case StoreMediaItem(TestSessionId, tempFileLocation, `filename`) =>
         tempFileLocationReceived = tempFileLocation
         NoAutoPilot
     })
 
     val content = "<html><body>Hello, world</body></html>"
-    val event = createHttpRequestEvent(HttpMethod.PUT, "/data", Map(
-      HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId)),
-      HttpHeaders.Names.CONTENT_TYPE -> TextHtmlContentType), content)
+    val testFile: File = File.createTempFile("tela", null)
+    Files.write(Paths.get(testFile.getAbsolutePath), content.getBytes)
 
-    handler ! event
+    val controller = new DataController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref)
 
-    assertNotNull(tempFileLocationReceived)
+    val app: Application = new GuiceApplicationBuilder().build()
+
+    Play.start(app)
+
     try {
-      assertEquals(HttpResponseStatus.OK, event.response.status)
-      assertResponseBody("")
+      val data = MultipartFormData(Map(), List(FilePart(key = "", filename = filename, contentType = None, ref = TemporaryFile(testFile))), Nil)
+      val body = FakeRequest("POST", "/").withCookies(Cookie(SessionIdCookieName, TestSessionId)).withMultipartFormDataBody(data)
+
+      implicit val anyContentAsMultipartFormWritable: Writeable[AnyContentAsMultipartFormData] = {
+        MultipartFormDataWritable.singleton.map(_.mdf)
+      }
+      implicit val mat = app.materializer
+
+      val result = Helpers.call(controller.uploadMediaItem(), body, body.body)
+
+      assertEquals(Status.OK, status(result)(tela.web.timeout))
       val lines = Files.readAllLines(Paths.get(tempFileLocationReceived))
       assertEquals(1, lines.size())
       assertEquals(content, lines.get(0))
     } finally {
-      new File(tempFileLocationReceived).delete()
+      Play.stop(app)
     }
   }
 
-  @Test def uploadMediaItemWithFilename(): Unit = {
-    val filename = "hello.html"
+  //This was stolen off the internet. I have no idea how or why it works
+  //http://tech.fongmun.com/post/125479939452/test-multipartformdata-in-play
+  object MultipartFormDataWritable {
+    private val boundary = "--------ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
 
-    var tempFileLocationReceived: String = null
-
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
-      case StoreMediaItem(TestSessionId, tempFileLocation, Some(`filename`)) =>
-        tempFileLocationReceived = tempFileLocation
-        NoAutoPilot
-    })
-
-    val content = "<html><body>Hello, world</body></html>"
-    val event = createHttpRequestEvent(HttpMethod.PUT, "/data", Map(
-      HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId)),
-      HttpHeaders.Names.CONTENT_TYPE -> TextHtmlContentType,
-      DataHandler.FilenameHTTPHeader -> filename), content)
-
-    handler ! event
-
-    assertNotNull(tempFileLocationReceived)
-    try {
-      assertEquals(HttpResponseStatus.OK, event.response.status)
-      assertResponseBody("")
-      val lines = Files.readAllLines(Paths.get(tempFileLocationReceived))
-      assertEquals(1, lines.size())
-      assertEquals(content, lines.get(0))
-    } finally {
-      new File(tempFileLocationReceived).delete()
+    private def formatDataParts(data: Map[String, Seq[String]]) = {
+      val dataParts = data.flatMap { case (key, values) =>
+        values.map { value =>
+          val name = s""""$key""""
+          s"--$boundary\r\n${HeaderNames.CONTENT_DISPOSITION}: form-data; name=$name\r\n\r\n$value\r\n"
+        }
+      }.mkString("")
+      Codec.utf_8.encode(dataParts)
     }
+
+    private def filePartHeader(file: FilePart[TemporaryFile]) = {
+      val name = s""""${file.key}""""
+      val filename = s""""${file.filename}""""
+      val contentType = file.contentType.map { ct =>
+        s"${HeaderNames.CONTENT_TYPE}: $ct\r\n"
+      }.getOrElse("")
+      Codec.utf_8.encode(s"--$boundary\r\n${HeaderNames.CONTENT_DISPOSITION}: form-data; name=$name; filename=$filename\r\n$contentType\r\n")
+    }
+
+    val singleton = Writeable[MultipartFormData[TemporaryFile]](
+      transform = { form: MultipartFormData[TemporaryFile] =>
+        formatDataParts(form.dataParts) ++
+          form.files.flatMap { file =>
+            val fileBytes = Files.readAllBytes(Paths.get(file.ref.file.getAbsolutePath))
+            filePartHeader(file) ++ fileBytes ++ Codec.utf_8.encode("\r\n")
+          } ++
+          Codec.utf_8.encode(s"--$boundary--")
+      },
+      contentType = Some(s"multipart/form-data; boundary=$boundary")
+    )
   }
 
   @Test def downloadMediaItem(): Unit = {
     val testHash = "aaaa"
     val testResponseFile = "web/src/test/data/TestApp/index.html"
 
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+    initializeTestProbe(true, (sender: ActorRef) => {
       case RetrieveMediaItem(TestSessionId, `testHash`) =>
         sender ! Some(testResponseFile)
         NoAutoPilot
     })
 
-    val event = createHttpRequestEvent(HttpMethod.GET, "/data?" + DataHandler.MediaItemUriParameter + "=" + testHash,
-      Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))
+    val controller = new DataController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref)
 
-    handler ! event
+    val result = controller.downloadMediaItem(testHash).apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionId)))
 
-    assertEquals(HttpResponseStatus.OK, event.response.status)
-    assertResponseBody(new String(Files.readAllBytes(Paths.get(testResponseFile))))
+    assertEquals(Status.OK, status(result)(tela.web.timeout))
+    assertEquals(None, contentType(result)(tela.web.timeout))
+    assertArrayEquals(
+      Files.readAllBytes(Paths.get(testResponseFile)),
+      contentAsBytes(result)(tela.web.timeout, buildMaterializer()).toList.toArray)
   }
 
   @Test def downloadMediaItem_NotFound(): Unit = {
     val testHash = "aaaa"
 
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+    initializeTestProbe(true, (sender: ActorRef) => {
       case RetrieveMediaItem(TestSessionId, `testHash`) =>
         sender ! None
         NoAutoPilot
     })
 
-    val event = createHttpRequestEvent(HttpMethod.GET, "/data?" + DataHandler.MediaItemUriParameter + "=" + testHash,
-      Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))
+    val controller = new DataController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref)
 
-    handler ! event
+    val result = controller.downloadMediaItem(testHash).apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionId)))
 
-    assertEquals(HttpResponseStatus.NOT_FOUND, event.response.status)
-    assertResponseBody("")
+    assertEquals(Status.NOT_FOUND, status(result)(tela.web.timeout))
+    assertEquals("", contentAsString(result)(tela.web.timeout))
   }
 
   @Test def sparqlQuery(): Unit = {
-    val sampleSparqlQuery = "CONSTRUCT { ?s ?p ?o } WHERE {?s ?p ?o }" //TODO URL encode???
+    val sampleSparqlQuery = "CONSTRUCT { ?s ?p ?o } WHERE {?s ?p ?o }"
 
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+    initializeTestProbe(true, (sender: ActorRef) => {
       case SPARQLQuery(TestSessionId, `sampleSparqlQuery`) =>
         sender ! "[]"
         NoAutoPilot
     })
 
-    val event = createHttpRequestEvent(HttpMethod.GET, "/data?" + DataHandler.SPARQLQueryParameter + "=" + sampleSparqlQuery,
-      Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))
+    val controller = new DataController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref)
+    val result = controller.sparqlQuery(sampleSparqlQuery).apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionId)))
 
-    handler ! event
-
-    assertResponseBody("[]")
-    assertEquals(JsonLdContentType, event.response.contentType.get)
+    assertEquals(Status.OK, status(result)(tela.web.timeout))
+    assertEquals(Some(JsonLdContentType), contentType(result)(tela.web.timeout))
+    assertEquals("[]", contentAsString(result)(tela.web.timeout))
   }
 
   @Test def textSearch(): Unit = {
     val query = "blah"
 
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+    initializeTestProbe(true, (sender: ActorRef) => {
       case TextSearch(TestSessionId, `query`) =>
         sender ! TextSearchResult(List("result1", "result2"))
         NoAutoPilot
     })
 
-    val event = createHttpRequestEvent(HttpMethod.GET, "/data?" + DataHandler.TextQueryParameter + "=" + query,
-      Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))
+    val controller = new DataController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref)
+    val result = controller.textSearch(query).apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionId)))
 
-    handler ! event
-
-    assertResponseBody(Json.obj(TextSearchResultsKey -> Json.arr("result1", "result2")))
-    assertEquals(JsonContentType, event.response.contentType.get)
-  }
-
-  private def initialiseTestActorAndProbe(shouldReturnUserData: Boolean, expectedCases: ((ActorRef) => PartialFunction[Any, TestActor.AutoPilot])*): Unit = {
-    handler = TestActorRef(new DataHandler(sessionManagerProbe.ref))
-    initializeTestProbe(shouldReturnUserData, expectedCases: _*)
+    assertEquals(Status.OK, status(result)(tela.web.timeout))
+    assertEquals(Some(ContentTypes.JSON), contentType(result)(tela.web.timeout))
+    assertEquals(Json.obj(TextSearchResultsKey -> Json.arr("result1", "result2")), contentAsJson(result)(tela.web.timeout))
   }
 }

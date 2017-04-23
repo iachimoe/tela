@@ -1,55 +1,28 @@
 package tela.web
 
-import java.util.Date
-
-import akka.actor.ActorRef
+import akka.actor.{ActorRef, PoisonPill}
 import akka.testkit.TestActor.NoAutoPilot
 import akka.testkit.{TestActor, TestActorRef}
-import io.netty.channel.Channel
-import io.netty.handler.codec.http._
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame
-import io.netty.util.DefaultAttributeMap
+import play.api.libs.json.{JsValue, Json}
 import org.junit.Assert._
 import org.junit.{Before, Test}
-import org.mashupbots.socko.events.{CurrentHttpRequestMessage, InitialHttpRequestMessage, WebSocketEventConfig, WebSocketFrameEvent}
-import org.mockito.Mockito._
 import tela.baseinterfaces.Presence
 import tela.web.JSONConversions._
 import tela.web.SessionManager._
 
 
-class WebSocketRequestHandlerTest extends SockoHandlerTestBase {
-  private val TestWebSocketId = "wsid"
+class WebSocketRequestHandlerTest extends SessionManagerClientTestBase {
   private val TestContactAddress = "foo@bar.net"
-
-  private var closedWebSocket: String = null
-
-  private var channel: Channel = null
-  private val map = new DefaultAttributeMap()
+  private var handler: ActorRef = null
 
   @Before def initialize(): Unit = {
     doBasicInitialization()
-
-    closedWebSocket = null
-
-    channel = mock[Channel]
-    map.attr(WebSocketEventConfig.webSocketIdKey).set(TestWebSocketId)
-    when(channel.attr(WebSocketEventConfig.webSocketIdKey)).thenReturn(map.attr(WebSocketEventConfig.webSocketIdKey))
-    when(channelHandlerContext.channel()).thenReturn(channel)
-  }
-
-  @Test def closeWebSocketIfSessionIdIsNotValid(): Unit = {
-    initialiseTestActorAndProbe(false)
-
-    handler ! createWebSocketRequestEvent("")
-
-    assertEquals(TestWebSocketId, closedWebSocket)
   }
 
   @Test def setPresence(): Unit = {
     var presenceSetByWebSocketHandler: Presence = null
 
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+    initialiseTestActorAndProbe((sender: ActorRef) => {
       case SetPresence(TestSessionId, presence) =>
         presenceSetByWebSocketHandler = presence
         NoAutoPilot
@@ -58,7 +31,6 @@ class WebSocketRequestHandlerTest extends SockoHandlerTestBase {
     handler ! createWebSocketRequestEvent( s"""{"$ActionKey": "$SetPresenceAction", "$DataKey": "${Presence.Available.toString.toLowerCase}"}""")
 
     assertEquals(Presence.Available, presenceSetByWebSocketHandler)
-    assertNull(TestWebSocketId, closedWebSocket)
   }
 
   @Test def getContactList(): Unit = {
@@ -81,10 +53,22 @@ class WebSocketRequestHandlerTest extends SockoHandlerTestBase {
       s"""{"$ActionKey": "$SendChatMessageAction", "$DataKey": {"$ChatMessageRecipientKey": "$TestContactAddress", "$ChatMessageDataKey": "$testMessage"}}""")
   }
 
+  @Test def notifySessionManagerWhenWebSocketIsClosed(): Unit = {
+    var unregisteredWebSocketRef: Option[ActorRef] = None
+
+    initialiseTestActorAndProbe((sender: ActorRef) => {
+      case UnregisterWebSocket(TestSessionId, ref) =>
+        unregisteredWebSocketRef = Some(ref)
+        NoAutoPilot
+    })
+    handler ! PoisonPill
+    assertTrue(unregisteredWebSocketRef.contains(handler))
+  }
+
   private def sendJSONAndAssertMessageSentToSessionManager(expectedMessageToSessionManager: AnyRef, json: String): Unit = {
     var sessionManagerReceivedExpectedMessage = false
 
-    initialiseTestActorAndProbe(true, (sender: ActorRef) => {
+    initialiseTestActorAndProbe((sender: ActorRef) => {
       case `expectedMessageToSessionManager` =>
         sessionManagerReceivedExpectedMessage = true
         NoAutoPilot
@@ -94,21 +78,12 @@ class WebSocketRequestHandlerTest extends SockoHandlerTestBase {
     assertTrue(sessionManagerReceivedExpectedMessage)
   }
 
-  private def initialiseTestActorAndProbe(shouldReturnUserData: Boolean, expectedCases: ((ActorRef) => PartialFunction[Any, TestActor.AutoPilot])*): Unit = {
-    handler = TestActorRef(new WebSocketRequestHandler(sessionManagerProbe.ref, closeWebSocket))
-    initializeTestProbe(shouldReturnUserData, expectedCases: _*)
+  private def initialiseTestActorAndProbe(expectedCases: ((ActorRef) => PartialFunction[Any, TestActor.AutoPilot])*): Unit = {
+    handler = TestActorRef(new WebSocketRequestHandler(sessionManagerProbe.ref, TestSessionId))
+    initializeTestProbe(shouldReturnUserData = false, expectedCases: _*)
   }
 
-  private def closeWebSocket(webSocketId: String): Unit = {
-    closedWebSocket = webSocketId
-  }
-
-  private def createWebSocketRequestEvent(content: String): WebSocketFrameEvent = {
-    val config = new WebSocketEventConfig("", None)
-    val frame = new TextWebSocketFrame(content)
-    val message = new InitialHttpRequestMessage(new CurrentHttpRequestMessage(
-      createHttpRequest(HttpMethod.GET, MainPageHandler.WebAppRoot,
-        Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))), new Date())
-    new WebSocketFrameEvent(channelHandlerContext, message, frame, config)
+  private def createWebSocketRequestEvent(content: String): JsValue = {
+    Json.parse(content)
   }
 }

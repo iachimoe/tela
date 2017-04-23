@@ -1,0 +1,17 @@
+GET        /        @tela.web.MainPageController.mainPage(logout: Option[String])
+POST       /        @tela.web.MainPageController.handleLogin()
+
+#TODO index.html thing is weird
+GET        /apps/:name/index.html          @tela.web.AppController.app(name: String)
+
+PUT        /settings/password   @tela.web.SettingsController.changePassword()
+PUT        /settings/language   @tela.web.SettingsController.changeLanguage()
+GET        /settings/languages  @tela.web.SettingsController.listAvailableLanguages()
+
+#The defeault routing DSL doesn't seem to enable routing requests to different endpoints based solely on differences in query string parameters
+#Therefore we are using a custom router for the /data endpoint
+->         /data                misc.DataRouter
+
+GET        /events              @tela.web.EventsController.webSocket
+
+GET        /webjars/*file       controllers.WebJarAssets.at(file)

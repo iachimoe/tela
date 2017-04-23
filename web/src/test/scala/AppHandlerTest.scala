@@ -1,15 +1,17 @@
 package tela.web
 
 import akka.actor.ActorRef
+import akka.testkit.TestActor
 import akka.testkit.TestActor.NoAutoPilot
-import akka.testkit.{TestActor, TestActorRef}
-import io.netty.handler.codec.http.{ClientCookieEncoder, HttpHeaders, HttpMethod}
-import org.junit.Assert._
+import org.junit.Assert.assertEquals
 import org.junit.{Before, Test}
-import org.mashupbots.socko.events.{HttpRequestEvent, HttpResponseStatus}
+import play.api.http.Status
+import play.api.mvc.Cookie
+import play.api.test.FakeRequest
+import play.api.test.Helpers.{contentAsString, contentType, status}
 import tela.web.SessionManager.GetSession
 
-class AppHandlerTest extends SockoHandlerTestBase {
+class AppHandlerTest extends SessionManagerClientTestBase {
   private val TestAppName = "TestApp"
   private val TestAppDirectory = "web/src/test/data"
 
@@ -18,41 +20,37 @@ class AppHandlerTest extends SockoHandlerTestBase {
   }
 
   @Test def notAuthorizedErrorForUserWithoutSession(): Unit = {
-    initialiseTestActorAndProbe(TestAppName, None)
+    initialiseProbe(None)
 
-    val event = createHttpRequestEvent(HttpMethod.GET, "/apps/" + TestAppName)
-    handler ! event
+    val controller = new AppController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref, TestAppDirectory)
+    val result = controller.app(TestAppName).apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionId)))
 
-    assertEquals(HttpResponseStatus.UNAUTHORIZED, event.response.status)
-    assertResponseBody("")
+    assertEquals(Status.UNAUTHORIZED, status(result)(tela.web.timeout))
+    assertEquals("", contentAsString(result)(tela.web.timeout))
   }
 
   @Test def notFoundErrorForUnknownApp(): Unit = {
-    initialiseTestActorAndProbe("NonExistent", Some(UserData(TestUsername, DefaultLanguage)))
+    initialiseProbe(Some(UserData(TestUsername, DefaultLanguage)))
 
-    val event = createHttpRequestEvent(HttpMethod.GET, "/apps/" + "NonExistent", Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))
-    handler ! event
+    val controller = new AppController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref, TestAppDirectory)
+    val result = controller.app("NonExistent").apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionId)))
 
-    assertEquals(HttpResponseStatus.NOT_FOUND, event.response.status)
-    assertResponseBody("")
+    assertEquals(Status.NOT_FOUND, status(result)(tela.web.timeout))
+    assertEquals("", contentAsString(result)(tela.web.timeout))
   }
 
   @Test def languageFallsBackToEnglishForMissingStrings(): Unit = {
-    initialiseTestActorAndProbe(TestAppName, Some(UserData(TestUsername, "es")))
+    initialiseProbe(Some(UserData(TestUsername, "es")))
 
-    val event: HttpRequestEvent = createHttpRequestEvent(HttpMethod.GET, MainPageHandler.WebAppRoot,
-      Map(HttpHeaders.Names.COOKIE -> ClientCookieEncoder.encode(createCookie(SessionIdCookieName, TestSessionId))))
+    val controller = new AppController(new UserAction(sessionManagerProbe.ref), sessionManagerProbe.ref, TestAppDirectory)
+    val result = controller.app(TestAppName).apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionId)))
 
-    handler ! event
-
-    assertResponseContent(event.response, "Spanish English Ambos")
+    assertEquals(Status.OK, status(result)(tela.web.timeout))
+    assertEquals(TextHtmlContentType, contentType(result)(tela.web.timeout).get) //TODO Constant for text/html
+    assertEquals("Spanish English Ambos", contentAsString(result)(tela.web.timeout))
   }
 
-  //TODO dodgy path test
-
-  private def initialiseTestActorAndProbe(appName: String, userData: Option[UserData]): Unit = {
-    handler = TestActorRef(new AppHandler(sessionManagerProbe.ref, TestAppDirectory, appName))
-
+  private def initialiseProbe(userData: Option[UserData]) = {
     sessionManagerProbe.setAutoPilot(new TestActor.AutoPilot {
       def run(sender: ActorRef, msg: Any): TestActor.AutoPilot =
         msg match {

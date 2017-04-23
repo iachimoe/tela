@@ -78,7 +78,7 @@
     }
 </style>
 
-<script src="/webjars/require.js"></script>
+<script src="/webjars/requirejs/2.1.20/require.js"></script>
 
 <script>
     // BEGIN WEBSOCKET
@@ -122,8 +122,8 @@
 
     require({
                 paths: {
-                    'scribe': '/webjars/scribe',
-                    'scribe-plugin-toolbar': '/webjars/scribe-plugin-toolbar'
+                    'scribe': '/webjars/scribe/3.2.0/scribe',
+                    'scribe-plugin-toolbar': '/webjars/scribe-plugin-toolbar/1.0.0/scribe-plugin-toolbar'
                 }
             }, ['scribe', 'scribe-plugin-toolbar'],
             function (localScribe, localScribePluginToolbar) {

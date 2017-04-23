@@ -32,7 +32,7 @@ trait DataStoreConnection {
 
   def retrievePublishedDataAsJSON(user: String, uri: String): String
 
-  def storeMediaItem(tempFileLocation: String, originalFileName: Option[String]): Unit
+  def storeMediaItem(tempFileLocation: String, originalFileName: String): Unit
 
   def retrieveMediaItem(hash: String): Option[String]
 

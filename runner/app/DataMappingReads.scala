@@ -1,5 +1,3 @@
-package tela.runner
-
 import java.net.URI
 
 import play.api.libs.functional.syntax._

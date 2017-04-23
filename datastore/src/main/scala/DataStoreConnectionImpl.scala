@@ -3,10 +3,9 @@ package tela.datastore
 import java.io._
 import java.nio.file.{Files, Paths}
 import java.security.MessageDigest
-import java.util.{Formatter, Locale, UUID}
+import java.util.{Formatter, Locale}
 
 import com.typesafe.scalalogging.Logger
-import org.eclipse.rdf4j.common.iteration.Iterations
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.lucene.document.Field.Store
 import org.apache.lucene.document.{Document, StringField, TextField}
@@ -18,6 +17,7 @@ import org.apache.tika.config.TikaConfig
 import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
 import org.apache.tika.parser.{AutoDetectParser, ParseContext}
 import org.apache.tika.sax.BodyContentHandler
+import org.eclipse.rdf4j.common.iteration.Iterations
 import org.eclipse.rdf4j.model.Model
 import org.eclipse.rdf4j.model.impl.LinkedHashModel
 import org.eclipse.rdf4j.query.{QueryLanguage, QueryResults}
@@ -45,7 +45,7 @@ object DataStoreConnectionImpl {
 
   def getDataStore(rootDirectory: String, user: String, genericFileDataMap: ComplexObject, dataMapping: Map[String, ComplexObject],
                    xmppSession: XMPPSession, tikaConfigFile: String,
-                   generateUUIDForMediaObjects: () => String = generateUUID _): DataStoreConnectionImpl = {
+                   generateUUIDForMediaObjects: () => String): DataStoreConnectionImpl = {
     log.info("Retrieving data store for user {}", user)
 
     if (!new File(rootDirectory).isDirectory) {
@@ -67,10 +67,6 @@ object DataStoreConnectionImpl {
     rdfParser.setRDFHandler(new StatementCollector(model))
     rdfParser.parse(new StringReader(data), "")
     model
-  }
-
-  private def generateUUID: String = {
-    UUID.randomUUID.toString
   }
 }
 
@@ -142,11 +138,12 @@ class DataStoreConnectionImpl(root: File, user: String,
     convertRDFModelToJson(model)
   }
 
-  override def storeMediaItem(tempFileLocation: String, originalFileName: Option[String]): Unit = {
+  override def storeMediaItem(tempFileLocation: String, originalFileName: String): Unit = {
     log.info("Request to store file at location {} for user {}", tempFileLocation, user)
     val fileContentAsByteArray = try {
       Files.readAllBytes(Paths.get(tempFileLocation))
     } finally {
+      //TODO no longer necessary - play deletes temp file
       new File(tempFileLocation).delete()
     }
     val hash = calculateHashForFileContent(fileContentAsByteArray)
@@ -190,13 +187,13 @@ class DataStoreConnectionImpl(root: File, user: String,
     Files.write(Paths.get(root.getAbsolutePath, MediaItemsFolderName, hash), fileContentAsByteArray)
   }
 
-  private def storeMetadataAndIndexText(originalFileName: Option[String], fileContentAsByteArray: Array[Byte], hash: String): Unit = {
+  private def storeMetadataAndIndexText(originalFileName: String, fileContentAsByteArray: Array[Byte], hash: String): Unit = {
     val handler = new BodyContentHandler(-1)
     val context = new ParseContext()
     val metadata = new Metadata()
     val autoDetectParser = new AutoDetectParser(new TikaConfig(tikaConfigFile))
 
-    originalFileName.foreach(metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, _))
+    metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, originalFileName)
 
     val stream = new BufferedInputStream(new ByteArrayInputStream(fileContentAsByteArray))
     val fileFormat = autoDetectParser.getDetector.detect(stream, metadata).toString

@@ -1,12 +1,10 @@
 package tela.web
 
-import java.util.UUID
-
-import akka.actor.{Actor, ActorLogging, ActorRef}
+import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill}
+import play.api.libs.json.Json
 import tela.baseinterfaces._
 import tela.web.JSONConversions._
 import tela.web.SessionManager._
-import tela.web.WebSocketDataPusher._
 
 object SessionManager {
 
@@ -20,9 +18,9 @@ object SessionManager {
 
   case class GetLanguages(sessionId: String)
 
-  case class RegisterWebSocket(sessionId: String, webSocketId: String)
+  case class RegisterWebSocket(sessionId: String, webSocketActorRef: ActorRef)
 
-  case class UnregisterWebSocket(sessionId: String, webSocketId: String)
+  case class UnregisterWebSocket(sessionId: String, webSocketActorRef: ActorRef)
 
   case class ChangePassword(sessionId: String, oldPassword: String, newPassword: String)
 
@@ -42,7 +40,7 @@ object SessionManager {
 
   case class SendChatMessage(sessionId: String, user: String, data: String)
 
-  case class StoreMediaItem(sessionId: String, temporaryFileLocation: String, originalFileName: Option[String])
+  case class StoreMediaItem(sessionId: String, temporaryFileLocation: String, originalFileName: String)
 
   case class RetrieveMediaItem(sessionId: String, hash: String)
 
@@ -50,21 +48,25 @@ object SessionManager {
 
   case class TextSearch(sessionId: String, query: String)
 
-  private def generateUUID: String = {
-    UUID.randomUUID.toString
-  }
+  case class PushContactListInfoToWebSockets(sessionId: String, contacts: AddContacts)
+
+  case class PushPresenceUpdateToWebSockets(sessionId: String, update: PresenceUpdate)
+
+  case class PushCallSignalToWebSockets(sessionId: String, callSignalReceipt: CallSignalReceipt)
+
+  case class PushChatMessageToWebSockets(sessionId: String, chatMessageReceipt: ChatMessageReceipt)
 }
 
 class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSessionListener) => Either[LoginFailure, XMPPSession],
                      createDataStoreConnection: (String, XMPPSession) => DataStoreConnection,
                      languages: Map[String, String],
                      xmppSettings: XMPPSettings,
-                     webSocketDataPusher: ActorRef,
-                     generateSessionId: () => String = generateUUID _) extends Actor with ActorLogging {
+                     generateSessionId: () => String) extends Actor with ActorLogging {
 
   private var sessions = Map[String, SessionInfo]()
 
   override def receive: Receive = {
+    //The following messages are expected to be sent from the controllers
     case Login(username, password, preferredLanguage) => attemptLogin(username, password, preferredLanguage)
     case GetSession(sessionId) => retrieveSessionIfItExists(sessionId)
     case SetPresence(sessionId, presence) => setPresence(sessionId, presence)
@@ -85,6 +87,11 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
     case RetrieveMediaItem(sessionId, hash) => retrieveMediaItem(sessionId, hash)
     case SPARQLQuery(sessionId, query) => runSPARQLQuery(sessionId, query)
     case TextSearch(sessionId, query) => runTextSearch(sessionId, query)
+    //The following messages are expected to be received from the session listener
+    case PushCallSignalToWebSockets(sessionId, callSignalReceipt) => pushCallSignalToWebSockets(sessionId, callSignalReceipt)
+    case PushChatMessageToWebSockets(sessionId, chatMessageReceipt) => pushChatMessageToWebSockets(sessionId, chatMessageReceipt)
+    case PushPresenceUpdateToWebSockets(sessionId, presenceUpdate) => pushPresenceUpdateToWebSockets(sessionId, presenceUpdate)
+    case PushContactListInfoToWebSockets(sessionId, contacts) => pushContactListInfoToWebSockets(sessionId, contacts)
   }
 
   private def publishData(sessionId: String, json: String, uri: String): Unit = {
@@ -133,7 +140,7 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
     sender ! sessions(sessionId).xmppSession.changePassword(oldPassword, newPassword)
   }
 
-  private def storeMediaItem(sessionId: String, fileLocation: String, originalFileName: Option[String]): Unit = {
+  private def storeMediaItem(sessionId: String, fileLocation: String, originalFileName: String): Unit = {
     log.debug("Storing media item for user with session {}", sessionId)
     sessions(sessionId).dataStoreConnection.storeMediaItem(fileLocation, originalFileName)
   }
@@ -143,35 +150,29 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
     sender ! sessions(sessionId).dataStoreConnection.retrieveMediaItem(hash)
   }
 
-  private def unregisterWebSocket(sessionId: String, webSocketId: String): Unit = {
+  private def unregisterWebSocket(sessionId: String, webSocketId: ActorRef): Unit = {
     log.debug("Unregistering web socket {} from session {}", webSocketId, sessionId)
-    if (sessions.contains(sessionId)) {
-      sessions += (sessionId -> sessions(sessionId).removeWebSocket(webSocketId))
-    }
+    sessions.get(sessionId).foreach(session => sessions += (sessionId -> session.removeWebSocket(webSocketId)))
   }
 
-  private def registerWebSocket(sessionId: String, webSocketId: String): Unit = {
+  private def registerWebSocket(sessionId: String, webSocketId: ActorRef): Unit = {
     log.debug("Registering web socket {} for session {}", webSocketId, sessionId)
-    if (sessions.contains(sessionId)) {
-      sessions += (sessionId -> sessions(sessionId).addWebSocket(webSocketId))
-      sender ! true
-    }
-    else sender ! false
+    sessions.get(sessionId).foreach(session => sessions += (sessionId -> session.addWebSocket(webSocketId)))
   }
 
   private def sendLanguagesInfo(sessionId: String): Unit = {
     log.debug("Sending language info for session {}", sessionId)
-    sender ! LanguageInfo(languages, sessions(sessionId).userData.language)
+    sender ! LanguageInfo(languages, sessions(sessionId).userData.preferredLanguage)
   }
 
   private def logout(sessionId: String): Unit = {
     val sessionInfo: SessionInfo = sessions(sessionId)
-    log.debug("Logging out of session {} for user {}", sessionId, sessionInfo.userData.name)
+    log.debug("Logging out of session {} for user {}", sessionId, sessionInfo.userData.username)
 
     //TODO prevent an exception from cutting this process short
     sessionInfo.xmppSession.disconnect()
     sessionInfo.dataStoreConnection.closeConnection()
-    webSocketDataPusher ! CloseWebSockets(sessionInfo.webSockets)
+    sessionInfo.webSockets.foreach(_ ! PoisonPill)
     sessions -= sessionId
   }
 
@@ -191,50 +192,61 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
   }
 
   private def retrieveSessionIfItExists(sessionId: String): Unit = {
-    log.debug("Request for session {}", sessionId)
-    sender ! sessions.get(sessionId).map(_.userData)
+    val result = sessions.get(sessionId).map(_.userData)
+    log.debug("Request for session {} yields result {}", sessionId, result)
+    sender ! result
   }
 
   private def attemptLogin(username: String, password: String, preferredLanguage: String): Unit = {
     log.debug("Received login request for user {} with language {}", username, preferredLanguage)
-    val listener: SessionListener = new SessionListener
-    val connectionResult: Either[LoginFailure, String] = createXMPPConnection(username, password, xmppSettings, listener).right.map(
-      (session: XMPPSession) => createNewSession(session, createDataStoreConnection(username, session), username, preferredLanguage))
+    val sessionId = generateSessionId()
+    val listener: SessionListener = new SessionListener(sessionId)
 
-    if (connectionResult.isRight) {
-      listener.sessionId = connectionResult.right.get
-    }
-    sender ! connectionResult
+    //TODO createXMPPConnection is a blocking operation in practice....should be done in a separate thread pool?
+    val connectionResult: Either[LoginFailure, XMPPSession] = createXMPPConnection(username, password, xmppSettings, listener)
+    connectionResult.right.foreach(session => createNewSession(sessionId, session, createDataStoreConnection(username, session), username, preferredLanguage))
+    val resultToSend = connectionResult.right.map(_ => sessionId)
+    log.debug("Result of login request for user {}: {}", username, resultToSend)
+    sender ! resultToSend
   }
 
-  private def createNewSession(session: XMPPSession, dataStoreConnection: DataStoreConnection, username: String, preferredLanguage: String): String = {
-    val id = generateSessionId()
-    sessions += (id -> new SessionInfo(session, dataStoreConnection, new UserData(username, preferredLanguage)))
-    id
+  private def pushCallSignalToWebSockets(sessionId: String, callSignalReceipt: CallSignalReceipt): Unit = {
+    sessions.get(sessionId).foreach(_.webSockets.foreach(webSocketActor => webSocketActor ! Json.toJson(callSignalReceipt)))
   }
 
-  //TODO It's a big no-no that the methods of this class, which are called from an arbitrary thread,
-  //are allowed to access the sessions map directly. They should be instead send a message to the actor
-  //to do what needs to be done
-  private class SessionListener extends XMPPSessionListener {
-    var sessionId: String = null
+  private def pushChatMessageToWebSockets(sessionId: String, chatMessageReceipt: ChatMessageReceipt): Unit = {
+    sessions.get(sessionId).foreach(_.webSockets.foreach(webSocketActor => webSocketActor ! Json.toJson(chatMessageReceipt)))
+  }
 
+  private def pushPresenceUpdateToWebSockets(sessionId: String, presenceUpdate: PresenceUpdate): Unit = {
+    sessions.get(sessionId).foreach(_.webSockets.foreach(webSocketActor => webSocketActor ! Json.toJson(presenceUpdate)))
+  }
+
+  private def pushContactListInfoToWebSockets(sessionId: String, contacts: AddContacts): Unit = {
+    sessions.get(sessionId).foreach(_.webSockets.foreach(webSocketActor => webSocketActor ! Json.toJson(contacts)))
+  }
+
+  private def createNewSession(id: String, session: XMPPSession, dataStoreConnection: DataStoreConnection, username: String, preferredLanguage: String): Unit = {
+    sessions += (id -> new SessionInfo(session, dataStoreConnection, UserData(username, preferredLanguage)))
+  }
+
+  private class SessionListener(sessionId: String) extends XMPPSessionListener {
     override def contactsAdded(contacts: List[ContactInfo]): Unit = {
-      webSocketDataPusher ! PushContactListInfoToWebSockets(AddContacts(contacts), sessions(sessionId).webSockets)
+      self ! PushContactListInfoToWebSockets(sessionId, AddContacts(contacts))
     }
 
     override def contactsRemoved(contacts: List[String]): Unit = {}
 
     override def presenceChanged(contact: ContactInfo): Unit = {
-      webSocketDataPusher ! PushPresenceUpdateToWebSockets(PresenceUpdate(contact), sessions(sessionId).webSockets)
+      self ! PushPresenceUpdateToWebSockets(sessionId, PresenceUpdate(contact))
     }
 
     override def callSignalReceived(user: String, data: String): Unit = {
-      webSocketDataPusher ! PushCallSignalToWebSockets(CallSignalReceipt(user, data), sessions(sessionId).webSockets)
+      self ! PushCallSignalToWebSockets(sessionId, CallSignalReceipt(user, data))
     }
 
     override def chatMessageReceived(user: String, message: String): Unit = {
-      webSocketDataPusher ! PushChatMessageToWebSockets(ChatMessageReceipt(user, message), sessions(sessionId).webSockets)
+      self ! PushChatMessageToWebSockets(sessionId, ChatMessageReceipt(user, message))
     }
   }
 }

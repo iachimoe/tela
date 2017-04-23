@@ -1,17 +1,18 @@
 package tela.web
 
+import akka.actor.ActorRef
 import tela.baseinterfaces.{DataStoreConnection, XMPPSession}
 
-class SessionInfo(val xmppSession: XMPPSession, val dataStoreConnection: DataStoreConnection, val userData: UserData, val webSockets: Set[String] = Set()) {
+class SessionInfo(val xmppSession: XMPPSession, val dataStoreConnection: DataStoreConnection, val userData: UserData, val webSockets: Set[ActorRef] = Set()) {
   def changeLanguage(language: String): SessionInfo = {
-    new SessionInfo(xmppSession, dataStoreConnection, new UserData(userData.name, language), webSockets)
+    new SessionInfo(xmppSession, dataStoreConnection, UserData(userData.username, language), webSockets)
   }
 
-  def addWebSocket(webSocket: String): SessionInfo = {
+  def addWebSocket(webSocket: ActorRef): SessionInfo = {
     new SessionInfo(xmppSession, dataStoreConnection, userData, webSockets + webSocket)
   }
 
-  def removeWebSocket(webSocket: String): SessionInfo = {
+  def removeWebSocket(webSocket: ActorRef): SessionInfo = {
     new SessionInfo(xmppSession, dataStoreConnection, userData, webSockets - webSocket)
   }
 }
