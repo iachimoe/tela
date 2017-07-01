@@ -25,8 +25,8 @@ package object web {
   private[web] val LanguagesFolder: String = "languages"
   private[web] val LanguageFileExtension: String = ".json"
 
-  private[web] val TimeoutDurationInSeconds = 9
-  private[web] implicit val timeout = Timeout(TimeoutDurationInSeconds, TimeUnit.SECONDS)
+  private val TimeoutDurationInSeconds = 9
+  private[web] implicit val GeneralTimeout = Timeout(TimeoutDurationInSeconds, TimeUnit.SECONDS)
 
   def getSessionFromRequest(request: RequestHeader, sessionManager: ActorRef): Future[Option[(String, UserData)]] = {
     request.cookies.get(SessionIdCookieName).map(cookie => {

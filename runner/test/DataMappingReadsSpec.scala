@@ -1,14 +1,12 @@
 import java.net.URI
 
-import org.junit.Assert._
-import org.junit.Test
-import org.scalatest.junit.AssertionsForJUnit
-import play.api.libs.json.Json
-import tela.baseinterfaces.{ComplexObject, DataStoreConnection, SimpleObject}
 import DataMappingReads._
+import org.scalatest.Matchers._
+import play.api.libs.json.Json
+import tela.baseinterfaces.{BaseSpec, ComplexObject, DataStoreConnection, SimpleObject}
 
-class DataMappingReadsTest extends AssertionsForJUnit {
-  @Test def mp3(): Unit = {
+class DataMappingReadsSpec extends BaseSpec {
+  "DataMappingReads" should "deserialize JSON into a ComplexObject" in {
     val expected = ComplexObject(new URI("http://schema.org/AudioObject"), Map(
       new URI("http://schema.org/genre") -> SimpleObject(List("xmpDM:genre")),
       new URI("http://schema.org/name") -> SimpleObject(List("dc:title")),
@@ -20,6 +18,6 @@ class DataMappingReadsTest extends AssertionsForJUnit {
         "http://schema.org/author" -> Json.obj(DataStoreConnection.MediaItemTypeKey -> "http://schema.org/Person", "children" -> Json.obj("http://schema.org/name" -> Json.obj("properties" -> Json.arr("xmpDM:artist"), "dataType" -> "Text"))))
     )
 
-    assertEquals(expected, song.as[ComplexObject])
+    song.as[ComplexObject] should === (expected)
   }
 }

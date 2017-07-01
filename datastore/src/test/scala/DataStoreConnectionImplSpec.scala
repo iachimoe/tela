@@ -5,22 +5,18 @@ import java.net.URI
 import java.nio.file.{Files, Paths, StandardCopyOption}
 
 import org.apache.lucene.store.AlreadyClosedException
-import org.junit.Assert._
-import org.junit.{After, Before, Test}
-import org.mockito.ArgumentMatchers._
-import org.mockito.Mockito._
-import org.mockito.{ArgumentMatcher, ArgumentMatchers}
 import org.eclipse.rdf4j.model.impl.{LinkedHashModel, SimpleValueFactory}
 import org.eclipse.rdf4j.model.vocabulary.{GEO, GEOF, XMLSchema}
 import org.eclipse.rdf4j.rio.RDFFormat
-import org.scalatest.junit.AssertionsForJUnit
-import org.scalatest.mock.MockitoSugar
+import org.mockito.ArgumentMatchers._
+import org.mockito.Mockito._
+import org.mockito.{ArgumentMatcher, ArgumentMatchers}
+import org.scalatest.Matchers._
 import tela.baseinterfaces.{ComplexObject, XMPPSession}
-import tela.datastore.TestData._
 
 import scala.xml._
 
-class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
+class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   private val BaseTestDir = TestDataRoot + "/store"
   private val NonExistentDataStore = TestDataRoot + "/nonExistent"
 
@@ -39,14 +35,11 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
   private val TestUUID = "aaaaaaaaa"
   private val URNWithTestUUID = DataStoreConnectionImpl.URNBaseForUUIDs + TestUUID
 
-  private val TestUser = "foo"
-  private val TestMediaItemsRoot = BaseTestDir + "/" + TestUser + "/" + DataStoreConnectionImpl.MediaItemsFolderName
-
-  private val TestPublicationURI = "http://tela/profileInfo"
+  private val TestMediaItemsRoot = BaseTestDir + "/" + TestUsername + "/" + DataStoreConnectionImpl.MediaItemsFolderName
 
   private val TestProfileInfoAsJSON = s"""[
                                   |    {
-                                  |        "@id": "$TestPublicationURI",
+                                  |        "@id": "${TestDataObjectUri}",
                                   |        "@type": [ "http://xmlns.com/foaf/0.1/Person" ],
                                   |        "http://xmlns.com/foaf/0.1/familyName": [
                                   |            {
@@ -72,7 +65,7 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
                                   |        ],
                                   |        "$FileFormatPredicate": [
                                   |            {
-                                  |                "@value": "$HtmlContentType"
+                                  |                "@value": "$TextHtmlContentType"
                                   |            }
                                   |        ]
                                   |    }
@@ -164,31 +157,37 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
                                               |    }
                                               |]""".stripMargin
 
-  val TestProfileInfoAsXML = <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
-    <rdf:Description rdf:about={TestPublicationURI}>
+  private val TestProfileInfoAsXML = <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+    <rdf:Description rdf:about={TestDataObjectUri}>
       <rdf:type rdf:resource="http://xmlns.com/foaf/0.1/Person"/>
       <familyName xmlns="http://xmlns.com/foaf/0.1/" rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Foo</familyName>
       <firstName xmlns="http://xmlns.com/foaf/0.1/" rdf:datatype="http://www.w3.org/2001/XMLSchema#string">Bar</firstName>
     </rdf:Description>
   </rdf:RDF>
 
-  private var connection: DataStoreConnectionImpl = null
-  private var xmppSession: XMPPSession = null
+  private class TestEnvironment(val connection: DataStoreConnectionImpl, val xmppSession: XMPPSession)
 
-  @Before def initialize(): Unit = {
-    recursiveDelete(new File(BaseTestDir, TestUser))
+  private def testEnvironment(runTest: (TestEnvironment) => Unit) = {
+    recursiveDelete(new File(BaseTestDir, TestUsername))
     recursiveDelete(new File(NonExistentDataStore))
-    xmppSession = mock[XMPPSession]
-    connection = DataStoreConnectionImpl.getDataStore(BaseTestDir, TestUser, GenericFileDataMap,
+
+    val xmppSession = mock[XMPPSession]
+    val connection = DataStoreConnectionImpl.getDataStore(BaseTestDir, TestUsername, GenericFileDataMap,
       Map(MP3ContentType -> MP3FileDataMap, ICalContentType -> ICalDataMap, PlainTextContentType -> PlainTextDataMap),
       xmppSession, TestTikaConfigFile, () => TestUUID)
+
+    try {
+      runTest(new TestEnvironment(connection, xmppSession))
+    } finally {
+      cleanUpDataStore(connection)
+    }
   }
 
-  @After def cleanUp(): Unit = {
+  private def cleanUpDataStore(connection: DataStoreConnectionImpl): Unit = {
     connection.closeConnection()
-    assertFalse(connection.connection.isOpen)
-    assertFalse(connection.repository.isInitialized)
-    assertEquals(0, connection.luceneIndexReader.getRefCount)
+    connection.connection.isOpen should === (false)
+    connection.repository.isInitialized should === (false)
+    connection.luceneIndexReader.getRefCount should === (0)
 
     var writerClosed = false
     try {
@@ -196,126 +195,128 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
     } catch {
       case _: AlreadyClosedException => writerClosed = true
     }
-    assertTrue(writerClosed)
+    writerClosed should === (true)
   }
 
-  @Test(expected = classOf[IllegalArgumentException]) def nonExistantDataStore(): Unit = {
-    DataStoreConnectionImpl.getDataStore(NonExistentDataStore, TestUser, ComplexObject(new URI(""), Map()), Map(), xmppSession, TestTikaConfigFile, () => "")
+  "getDataStore" should "throw an IllegalArgumentException for a non-existent data store" in testEnvironment { environment =>
+    assertThrows[IllegalArgumentException] {
+      DataStoreConnectionImpl.getDataStore(NonExistentDataStore, TestUsername, ComplexObject(new URI(""), Map()), Map(), environment.xmppSession, TestTikaConfigFile, () => "")
+    }
   }
 
-  @Test def retrieveJSONFromEmptyStore(): Unit = {
-    assertJSONGraphsAreEqual("[]", connection.retrieveJSON(TestPublicationURI))
+  "retrieveJson" should "return an empty array when an arbitrary URI is requested from an empty store" in testEnvironment { environment =>
+    assertJSONGraphsAreEqual("[]", environment.connection.retrieveJSON(TestDataObjectUri))
   }
 
-  @Test def retrieveJSON(): Unit = {
-    connection.insertJSON(TestProfileInfoAsJSON)
-    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, connection.retrieveJSON(TestPublicationURI))
-    assertJSONGraphsAreEqual("[]", connection.retrieveJSON("http://tela/nonExistant"))
+  it should "retrieve the same JSONLD graph that was inserted when the URI of that graph is requested" in testEnvironment { environment =>
+    environment.connection.insertJSON(TestProfileInfoAsJSON)
+    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, environment.connection.retrieveJSON(TestDataObjectUri))
+    assertJSONGraphsAreEqual("[]", environment.connection.retrieveJSON("http://tela/nonExistant"))
   }
 
-  @Test def retrieveJSONDoesNotRetrieveUnrelatedData(): Unit = {
+  it should "not retrieve unrelated data" in testEnvironment { environment =>
     val otherPerson = s"""[
-                        |    {
-                        |        "@id": "uri:Other",
-                        |        "@type": [ "http://xmlns.com/foaf/0.1/Person" ]
-                        |    }
-                        |]""".stripMargin
+                         |    {
+                         |        "@id": "uri:Other",
+                         |        "@type": [ "http://xmlns.com/foaf/0.1/Person" ]
+                         |    }
+                         |]""".stripMargin
 
-    connection.insertJSON(TestProfileInfoAsJSON)
-    connection.insertJSON(otherPerson)
-    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, connection.retrieveJSON(TestPublicationURI))
+    environment.connection.insertJSON(TestProfileInfoAsJSON)
+    environment.connection.insertJSON(otherPerson)
+    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, environment.connection.retrieveJSON(TestDataObjectUri))
   }
 
-  @Test def oldContentGetsDeleted(): Unit = {
+  "insertJson" should "overwrite old content when new content is inserted with an pre-existing URI" in testEnvironment { environment =>
     val alternateData = s"""[
-                          |    {
-                          |        "@id": "$TestPublicationURI",
-                          |        "@type": [ "http://xmlns.com/foaf/0.1/Person" ],
-                          |        "http://xmlns.com/foaf/0.1/familyName": [
-                          |            {
-                          |                "@value": "asf"
-                          |            }
-                          |        ],
-                          |        "http://xmlns.com/foaf/0.1/firstName": [
-                          |            {
-                          |                "@value": "qwer"
-                          |            }
-                          |        ]
-                          |    }
-                          |]""".stripMargin
+                           |    {
+                           |        "@id": "${TestDataObjectUri}",
+                           |        "@type": [ "http://xmlns.com/foaf/0.1/Person" ],
+                           |        "http://xmlns.com/foaf/0.1/familyName": [
+                           |            {
+                           |                "@value": "asf"
+                           |            }
+                           |        ],
+                           |        "http://xmlns.com/foaf/0.1/firstName": [
+                           |            {
+                           |                "@value": "qwer"
+                           |            }
+                           |        ]
+                           |    }
+                           |]""".stripMargin
 
-    connection.insertJSON(alternateData)
-    connection.insertJSON(TestProfileInfoAsJSON)
-    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, connection.retrieveJSON(TestPublicationURI))
+    environment.connection.insertJSON(alternateData)
+    environment.connection.insertJSON(TestProfileInfoAsJSON)
+    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, environment.connection.retrieveJSON(TestDataObjectUri))
   }
 
-  @Test def publish(): Unit = {
-    connection.insertJSON(TestProfileInfoAsJSON)
-    connection.publish(TestPublicationURI)
+  "publish" should "publish given URI in XML format via XMPP" in testEnvironment { environment =>
+    environment.connection.insertJSON(TestProfileInfoAsJSON)
+    environment.connection.publish(TestDataObjectUri)
 
-    verify(xmppSession).publish(ArgumentMatchers.eq(TestPublicationURI), argThat(new XMLMatcher(TestProfileInfoAsXML)))
+    verify(environment.xmppSession).publish(ArgumentMatchers.eq(TestDataObjectUri), argThat(new XMLMatcher(TestProfileInfoAsXML)))
   }
 
-  @Test def retrievePublishedDataAsJSON(): Unit = {
-    when(xmppSession.getPublishedData(TestUser, TestPublicationURI)).thenReturn(TestProfileInfoAsXML.toString)
+  "getPublishedData" should "retrieve published data from XMPPSession and return response as JSON" in testEnvironment { environment =>
+    when(environment.xmppSession.getPublishedData(TestUsername, TestDataObjectUri)).thenReturn(TestProfileInfoAsXML.toString)
 
-    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, connection.retrievePublishedDataAsJSON(TestUser, TestPublicationURI))
+    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, environment.connection.retrievePublishedDataAsJSON(TestUsername, TestDataObjectUri))
   }
 
-  @Test def storeMediaItem(): Unit = {
-    val tempFile = createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName)
-    assertTrue(new File(TestMediaItemsRoot, HashOfTestHtmlFile).exists())
-    assertFalse(tempFile.exists())
+  "storeMediaItem" should "place contents of temporary file in data store with correct hash and remove temporary file" in testEnvironment { environment =>
+    val tempFile = createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection)
+    new File(TestMediaItemsRoot, HashOfTestHtmlFile).exists() should === (true)
+    tempFile.exists() should === (false)
   }
 
-  @Test def storeMultipleMediaItems(): Unit = {
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName)
-    createTempFileAndStoreContent(TestMP3, TestMP3FileName)
-    createTempFileAndStoreContent(TestMP3, TestMP3FileName) //verifying that storing the same file twice won't cause an exception
+  it should "be able to store multiple files" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection)
+    createTempFileAndStoreContent(TestMP3, TestMP3FileName, environment.connection)
+    createTempFileAndStoreContent(TestMP3, TestMP3FileName, environment.connection) //verifying that storing the same file twice won't cause an exception
 
-    assertTrue(new File(TestMediaItemsRoot, HashOfTestHtmlFile).exists())
-    assertTrue(new File(TestMediaItemsRoot, HashOfTestMP3).exists())
+    new File(TestMediaItemsRoot, HashOfTestHtmlFile).exists() should === (true)
+    new File(TestMediaItemsRoot, HashOfTestMP3).exists() should === (true)
   }
 
-  @Test def retrieveMediaItem(): Unit = {
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName)
-    assertEquals(Some(new File(TestMediaItemsRoot, HashOfTestHtmlFile).getAbsolutePath), connection.retrieveMediaItem(HashOfTestHtmlFile))
+  "retrieveMediaItem" should "return the absolute path if the requested file if it exists in the data store" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection)
+    environment.connection.retrieveMediaItem(HashOfTestHtmlFile) should === (Some(new File(TestMediaItemsRoot, HashOfTestHtmlFile).getAbsolutePath))
   }
 
-  @Test def retrieveNonExistentMediaItem(): Unit = {
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName) //adding this file to ensure that data store exists
-    assertEquals(None, connection.retrieveMediaItem("notARealHash"))
+  it should "return None for a non-existent media item" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection) //adding this file to ensure that data store exists
+    environment.connection.retrieveMediaItem("notARealHash") should === (None)
   }
 
-  @Test def prohibitAttemptsToRetrieveFilesFromOtherFolders(): Unit = {
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName) //adding this file to ensure that data store exists
-    assertEquals(None, connection.retrieveMediaItem("../../.gitignore"))
+  it should "prohibit attempts to retreive files from other folders" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection) //adding this file to ensure that data store exists
+    environment.connection.retrieveMediaItem("../../.gitignore") should === (None)
   }
 
-  @Test def storeUUIDAndHashAndFileFormatOfMediaItemsInRDFStore(): Unit = {
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName)
-    assertJSONGraphsAreEqual(TestHTMLFileMetadataAsJSON, connection.retrieveJSON(URNWithTestUUID))
+  it should "store UUID, hash and file format of media items in RDF store" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection)
+    assertJSONGraphsAreEqual(TestHTMLFileMetadataAsJSON, environment.connection.retrieveJSON(URNWithTestUUID))
   }
 
-  @Test def storeMetadataFromMP3FileInRDFStore(): Unit = {
-    createTempFileAndStoreContent(TestMP3, TestMP3FileName)
-    assertJSONGraphsAreEqual(TestMP3FileMetadataAsJSON, connection.retrieveJSON(URNWithTestUUID))
+  it should "store metadata from MP3 file in RDF store" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestMP3, TestMP3FileName, environment.connection)
+    assertJSONGraphsAreEqual(TestMP3FileMetadataAsJSON, environment.connection.retrieveJSON(URNWithTestUUID))
   }
 
-  @Test def sparqlQueryWithEmptyResult(): Unit = {
-    assertEquals("[]", connection.runSPARQLQuery("CONSTRUCT { ?s ?p ?o } WHERE {?s ?p ?o }"))
+  "runSPARQLQuery" should "return empty array for query against empty repository" in testEnvironment { environment =>
+    environment.connection.runSPARQLQuery(WildcardSparqlQuery) should === ("[]")
   }
 
-  @Test def sparqlQuery(): Unit = {
-    connection.insertJSON(TestProfileInfoAsJSON)
+  it should "return data in JSONLD format" in testEnvironment { environment =>
+    environment.connection.insertJSON(TestProfileInfoAsJSON)
 
-    val result = connection.runSPARQLQuery("PREFIX foaf: <http://xmlns.com/foaf/0.1/>\n" +
+    val result = environment.connection.runSPARQLQuery("PREFIX foaf: <http://xmlns.com/foaf/0.1/>\n" +
       "CONSTRUCT { ?s foaf:familyName ?o } WHERE {?s foaf:familyName ?o}")
 
-    assertEquals("""[{"@id":"http://tela/profileInfo","http://xmlns.com/foaf/0.1/familyName":[{"@value":"Foo"}]}]""", result)
+    result should === ("""[{"@id":"http://tela/profileInfo","http://xmlns.com/foaf/0.1/familyName":[{"@value":"Foo"}]}]""")
   }
 
-  @Test def geoSparql(): Unit = {
+  it should "handle GeoSparql queries" in testEnvironment { environment =>
     //At the time of writing the LuceneSail is the only Sail that supports GeoSparql
 
     val valueFactory = SimpleValueFactory.getInstance()
@@ -324,40 +325,40 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
     graphWithRestaurant.add(valueFactory.createIRI("http://leVinCoeur"), GEO.AS_WKT, valueFactory.createLiteral("POINT (2.29397 48.87510)", GEO.WKT_LITERAL))
 
     val graphWithRestaurantAsJson: String = DataStoreConnectionImpl.convertRDFModelToJson(graphWithRestaurant)
-    connection.insertJSON(graphWithRestaurantAsJson)
+    environment.connection.insertJSON(graphWithRestaurantAsJson)
 
     val placesNearArcDeTriompheQuery =
       "prefix geo: <" + GEO.NAMESPACE + ">" +
-      "prefix geof: <" + GEOF.NAMESPACE + ">" +
-      "prefix uom: <" + GEOF.UOM_NAMESPACE + ">" +
-      "prefix xsd: <" + XMLSchema.NAMESPACE + ">" +
-      "DESCRIBE ?subject where { ?subject geo:asWKT ?object . filter(geof:distance(\"POINT (2.2950 48.8738)\"^^geo:wktLiteral, ?object, uom:metre) < \"500.0\"^^xsd:double) }"
+        "prefix geof: <" + GEOF.NAMESPACE + ">" +
+        "prefix uom: <" + GEOF.UOM_NAMESPACE + ">" +
+        "prefix xsd: <" + XMLSchema.NAMESPACE + ">" +
+        "DESCRIBE ?subject where { ?subject geo:asWKT ?object . filter(geof:distance(\"POINT (2.2950 48.8738)\"^^geo:wktLiteral, ?object, uom:metre) < \"500.0\"^^xsd:double) }"
 
-    val result: String = connection.runSPARQLQuery(placesNearArcDeTriompheQuery)
+    val result: String = environment.connection.runSPARQLQuery(placesNearArcDeTriompheQuery)
     assertJSONGraphsAreEqual(graphWithRestaurantAsJson, result)
   }
 
-  @Test def ical(): Unit = {
-    createTempFileAndStoreContent(TestIcalFileWithEvent, TestIcalWithEventFileName)
-    assertJSONGraphsAreEqual(TestICalFileMetadataAsJSON, connection.retrieveJSON(URNWithTestUUID))
+  it should "extract appropriate metadata from ical content" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestIcalFileWithEvent, TestIcalWithEventFileName, environment.connection)
+    assertJSONGraphsAreEqual(TestICalFileMetadataAsJSON, environment.connection.retrieveJSON(URNWithTestUUID))
   }
 
-  @Test def filenameIsStoredIfConfiguredForFileType(): Unit = {
-    createTempFileAndStoreContent(TestTextFile, TestTextFileName)
-    assertJSONGraphsAreEqual(TestTextFileMetadataAsJSON, connection.retrieveJSON(URNWithTestUUID))
+  it should "store filename" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestTextFile, TestTextFileName, environment.connection)
+    assertJSONGraphsAreEqual(TestTextFileMetadataAsJSON, environment.connection.retrieveJSON(URNWithTestUUID))
   }
 
-  @Test def textIsSearchable(): Unit = {
-    createTempFileAndStoreContent(TestTextFile, TestTextFileName)
-    assertEquals(List(HashOfTestTextFile), connection.textSearch("hello"))
+  it should "index text which is then searchable by means of textSearch method" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestTextFile, TestTextFileName, environment.connection)
+    environment.connection.textSearch("hello") should === (List(HashOfTestTextFile))
 
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName)
-    assertEquals(List(HashOfTestTextFile, HashOfTestHtmlFile).sortBy(s => s), connection.textSearch("hello").sortBy(s => s))
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection)
+    environment.connection.textSearch("hello").sortBy(s => s) should === (List(HashOfTestTextFile, HashOfTestHtmlFile).sortBy(s => s))
 
-    assertEquals(List(HashOfTestTextFile), connection.textSearch("world"))
+    environment.connection.textSearch("world") should === (List(HashOfTestTextFile))
   }
 
-  private def createTempFileAndStoreContent(path: String, originalFileName: String): File = {
+  private def createTempFileAndStoreContent(path: String, originalFileName: String, connection: DataStoreConnectionImpl): File = {
     val tempFile = File.createTempFile("aaa", "")
     Files.copy(Paths.get(path), Paths.get(tempFile.getAbsolutePath), StandardCopyOption.REPLACE_EXISTING)
     connection.storeMediaItem(tempFile.getAbsolutePath, originalFileName)
@@ -365,11 +366,7 @@ class DataStoreConnectionImplTest extends AssertionsForJUnit with MockitoSugar {
   }
 
   private def assertJSONGraphsAreEqual(expected: String, actual: String): Unit = {
-    val expGraph: LinkedHashModel = getJSONAsRDFModel(expected)
-    val actGraph: LinkedHashModel = getJSONAsRDFModel(actual)
-    if (expGraph != actGraph) {
-      fail("expected: " + expected + System.lineSeparator + "actual: " + actual)
-    }
+    getJSONAsRDFModel(actual) should === (getJSONAsRDFModel(expected))
   }
 
   private def getJSONAsRDFModel(json: String): LinkedHashModel = {
