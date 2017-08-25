@@ -1,25 +1,24 @@
 package tela.web
 
 import java.io.{FileReader, StringWriter}
+import java.nio.file.Paths
 
 import akka.actor.ActorRef
 import akka.testkit.TestActor.NoAutoPilot
 import org.scalatest.Matchers._
 import play.api.http.{HeaderNames, Status}
-import play.api.libs.json.{JsValue, Json}
+import play.api.libs.json.JsValue
 import play.api.mvc.{Cookie, Cookies, Result}
 import play.api.test.FakeRequest
 import tela.baseinterfaces.LoginFailure
 import tela.web.SessionManager.{GetSession, Login, Logout}
 
-import scala.collection.JavaConversions._
 import scala.concurrent.{Await, Future}
-import scala.io.Source
 
 class MainPageControllerSpec extends SessionManagerClientBaseSpec {
   private val ContentFolder = "web/src/main/html/"
   private val TestAppIndex = "web/src/test/data/appIndex.json"
-  private val AppIndexData = Json.parse(Source.fromFile(TestAppIndex).mkString)
+  private val AppIndexData = JsonFileHelper.getContents(Paths.get(TestAppIndex))
 
   private def testEnvironment(runTest: (TestEnvironment[MainPageController]) => Unit): Unit = {
     runTest(createTestEnvironment((sessionManager, _) => new MainPageController(sessionManager, ContentFolder, TestAppIndex)))
@@ -170,6 +169,7 @@ class MainPageControllerSpec extends SessionManagerClientBaseSpec {
   private def assertResponseContent(response: Future[Result], template: String, contentRoot: String, templateMappings: Map[String, String]*): Unit = {
     val mustache = (new NonEscapingMustacheFactory).compile(new FileReader(contentRoot + "/" + template), "")
     val writer = new StringWriter
+    import scala.collection.JavaConversions._
     mustache.execute(writer, templateMappings.map(mapAsJavaMap).toArray[Object])
     assertResponseContent(response, writer.toString)
   }
@@ -195,7 +195,7 @@ class MainPageControllerSpec extends SessionManagerClientBaseSpec {
   }
 
   private def getMappingsForLanguage(contentFolder: String, lang: String): Map[String, String] = {
-    Json.parse(Source.fromFile(contentFolder + "/" + LanguagesFolder + "/" + lang + LanguageFileExtension).mkString).as[Map[String, String]]
+    JsonFileHelper.getContents(Paths.get(contentFolder + "/" + LanguagesFolder + "/" + lang + LanguageFileExtension)).as[Map[String, String]]
   }
 
   private def getLanguageFromIndexData(language: String): String = {

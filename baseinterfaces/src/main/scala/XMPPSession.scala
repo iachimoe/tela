@@ -1,6 +1,6 @@
 package tela.baseinterfaces
 
-case class XMPPSettings(hostname: String, port: Int, domain: String, securityMode: String)
+case class XMPPSettings(hostname: String, port: Int, domain: String, securityMode: String, debug: Boolean)
 
 sealed trait LoginFailure
 

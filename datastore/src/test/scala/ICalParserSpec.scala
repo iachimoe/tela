@@ -15,7 +15,7 @@ class ICalParserSpec extends DataStoreBaseSpec {
     metadata.get(TikaCoreProperties.DESCRIPTION) should === ("Domain-Driven Design London / DDD London\nTuesday, July 5 at 6:30 PM")
     metadata.get(TikaCoreProperties.LATITUDE) should === ("51.52")
     metadata.get(TikaCoreProperties.LONGITUDE) should === ("-0.10")
-    metadata.get(TikaCoreProperties.METADATA_DATE) should === ("2016-07-05T18:30:00")
+    metadata.get(TikaCoreProperties.METADATA_DATE) should === ("2016-07-05T17:30:00")
   }
 
   it should "return no metadata for a file without an event" in {

@@ -6,7 +6,7 @@ import org.scalatest.mockito.MockitoSugar
 
 trait BaseSpec extends FlatSpec with TypeCheckedTripleEquals with MockitoSugar {
   protected val TestDomain = "example.com"
-  protected val TestXMPPSettings = XMPPSettings("localhost", 5222, TestDomain, "disabled")
+  protected val TestXMPPSettings = XMPPSettings("localhost", 5222, TestDomain, "disabled", debug = false)
 
   protected val TestUsername = "foo"
   protected val TestPassword = "bigSecret"

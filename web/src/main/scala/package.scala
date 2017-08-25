@@ -1,20 +1,18 @@
 package tela
 
 import java.io.{File, FileReader, StringWriter}
+import java.nio.file.{Files, Path, Paths}
 import java.util.concurrent.TimeUnit
 
 import akka.actor.ActorRef
 import akka.util.Timeout
 import akka.pattern.ask
 import play.api.Logger
-import play.api.libs.json.Json
 import play.api.mvc.RequestHeader
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
 import tela.web.SessionManager.GetSession
 
-import scala.collection.JavaConversions._
 import scala.concurrent.Future
-import scala.io.Source
 
 package object web {
   private[web] val JsonLdContentType: String = "application/ld+json"
@@ -39,23 +37,24 @@ package object web {
   def getContent(documentRoot: String, filename: String, preferredLanguage: String, templateMap: Map[String, String]): String = {
     val mustache = new NonEscapingMustacheFactory().compile(new FileReader(new File(documentRoot, filename)), "")
     val writer = new StringWriter
+    import scala.collection.JavaConversions._
     mustache.execute(writer, getTemplateMappings(documentRoot, preferredLanguage, templateMap).map(mapAsJavaMap).toArray[java.lang.Object])
     writer.toString
   }
 
   private def getTemplateMappings(documentRoot: String, preferredLanguage: String, templateMap: Map[String, String]): Seq[Map[String, String]] = {
     val languageFile = getFileForLanguage(documentRoot, preferredLanguage)
-    if (preferredLanguage != DefaultLanguage && languageFile.exists)
+    if (preferredLanguage != DefaultLanguage && Files.exists(languageFile))
       Seq(getMappingsForLanguage(getFileForLanguage(documentRoot, DefaultLanguage)), getMappingsForLanguage(languageFile), templateMap)
     else
       Seq(getMappingsForLanguage(getFileForLanguage(documentRoot, DefaultLanguage)), templateMap)
   }
 
-  private def getMappingsForLanguage(mappingsFile: File): Map[String, String] = {
-    Json.parse(Source.fromFile(mappingsFile).mkString).as[Map[String, String]]
+  private def getMappingsForLanguage(mappingsFile: Path): Map[String, String] = {
+    JsonFileHelper.getContents(mappingsFile).as[Map[String, String]]
   }
 
-  private def getFileForLanguage(documentRoot: String, lang: String): File = {
-    new File(documentRoot + "/" + LanguagesFolder + "/" + lang + LanguageFileExtension)
+  private def getFileForLanguage(documentRoot: String, lang: String): Path = {
+    Paths.get(documentRoot + "/" + LanguagesFolder + "/" + lang + LanguageFileExtension)
   }
 }

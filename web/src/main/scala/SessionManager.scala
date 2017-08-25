@@ -120,12 +120,12 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
     sender ! sessions(sessionId).dataStoreConnection.retrievePublishedDataAsJSON(user, uri)
   }
 
-  def addContact(sessionId: String, contact: String): Unit = {
+  private def addContact(sessionId: String, contact: String): Unit = {
     log.debug("Adding contact {} for user with session {}", contact, sessionId)
     sessions(sessionId).xmppSession.addContact(contact)
   }
 
-  def getContactList(sessionId: String): Unit = {
+  private def getContactList(sessionId: String): Unit = {
     log.debug("Getting contact list for user with session {}", sessionId)
     sessions(sessionId).xmppSession.getContactList
   }
@@ -135,7 +135,7 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
     sessions += (sessionId -> sessions(sessionId).changeLanguage(language))
   }
 
-  def changePassword(sessionId: String, oldPassword: String, newPassword: String): Unit = {
+  private def changePassword(sessionId: String, oldPassword: String, newPassword: String): Unit = {
     log.debug("Attempting to change password for user with session {}", sessionId)
     sender ! sessions(sessionId).xmppSession.changePassword(oldPassword, newPassword)
   }

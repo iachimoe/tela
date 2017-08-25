@@ -30,8 +30,6 @@ import org.slf4j.LoggerFactory
 import tela.baseinterfaces.{ComplexObject, DataStoreConnection, XMPPSession}
 import tela.datastore.DataStoreConnectionImpl._
 
-import scala.collection.JavaConversions._
-
 object DataStoreConnectionImpl {
   private[datastore] val MediaItemsFolderName = "mediaItems"
   private[datastore] val URNBaseForUUIDs = "urn:telaUUID:"
@@ -106,6 +104,7 @@ class DataStoreConnectionImpl(root: File, user: String,
 
     val model = convertDataToRDFModel(data, RDFFormat.JSONLD)
 
+    import scala.collection.JavaConversions._
     if (model.size > 0)
       connection.remove(asScalaSet(model.subjects).toArray.apply(0), null, null)
 

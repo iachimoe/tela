@@ -1,0 +1,47 @@
+{
+  "generic": {
+    "mediaItemType": "http://schema.org/MediaObject",
+    "children": {
+      "http://schema.org/alternateName": {
+        "properties": [
+          "hashPredicate"
+        ],
+        "dataType": "Text"
+      }
+    }
+  },
+  "dataMappings": [
+    {
+      "types": [
+        "text/plain"
+      ],
+      "conf": {
+        "mediaItemType": "http://schema.org/MediaObject",
+        "children": {
+          "http://schema.org/name": {
+            "properties": [
+              "resourceName"
+            ],
+            "dataType": "Text"
+          }
+        }
+      }
+    },
+    {
+      "types": [
+        "audio/mpeg"
+      ],
+      "conf": {
+        "mediaItemType": "http://schema.org/AudioObject",
+        "children": {
+          "http://schema.org/name": {
+            "properties": [
+              "dc:title"
+            ],
+            "dataType": "Text"
+          }
+        }
+      }
+    }
+  ]
+}

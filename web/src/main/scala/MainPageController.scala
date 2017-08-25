@@ -1,5 +1,6 @@
 package tela.web
 
+import java.nio.file.Paths
 import javax.inject.{Inject, Named}
 
 import akka.actor.ActorRef
@@ -8,13 +9,11 @@ import play.api.Logger
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.concurrent.Execution.Implicits.defaultContext
-import play.api.libs.json.{JsLookupResult, JsValue, Json}
+import play.api.libs.json.{JsLookupResult, JsValue}
 import play.api.mvc.{Request, _}
 import tela.baseinterfaces.LoginFailure
 import tela.web.MainPageController._
 import tela.web.SessionManager.{Login, Logout}
-
-import scala.io.Source
 
 object MainPageController {
   private[web] val LoginPage: String = "login.html"
@@ -46,7 +45,7 @@ class MainPageController @Inject()(
                                     @Named("login-page-root") documentRoot: String,
                                     @Named("app-index-file") appIndex: String
                                   ) extends Controller {
-  private val appIndexData = Json.parse(Source.fromFile(appIndex).mkString)
+  private val appIndexData = JsonFileHelper.getContents(Paths.get(appIndex))
 
   private val loginDetailsForm = Form(mapping(
     UsernameRequestParameter -> text,

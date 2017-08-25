@@ -1,21 +1,21 @@
+import java.nio.file.{Path, Paths}
 import java.util.UUID
 
 import akka.actor.Props
 import com.google.inject.AbstractModule
 import com.google.inject.name.Names
 import com.typesafe.config.Config
-import org.jivesoftware.smack.SmackConfiguration
 import play.api.libs.concurrent.AkkaGuiceSupport
-import play.api.libs.json.{JsArray, Json}
+import play.api.libs.json.JsArray
 import play.api.{Configuration, Environment}
 import tela.baseinterfaces.{ComplexObject, DataStoreConnection, XMPPSession, XMPPSettings}
 import tela.datastore.DataStoreConnectionImpl
-import tela.web.SessionManager
+import tela.web.{JsonFileHelper, SessionManager}
 import tela.xmpp.SmackXMPPSession
 
-import scala.io.Source
+import Module._
 
-class Module(environment: Environment, configuration: Configuration) extends AbstractModule with AkkaGuiceSupport {
+object Module {
   case class DataStoreSettings(location: String, genericFileDataMap: ComplexObject, dataMapping: Map[String, ComplexObject])
 
   private val AppRoot = "apps"
@@ -30,13 +30,45 @@ class Module(environment: Environment, configuration: Configuration) extends Abs
   private val XMPPConfigKey = "xmpp-config"
   private val DataStoreConfigKey = "data-store-config"
 
+  def loadXMPPSettings(config: Config): XMPPSettings = {
+    XMPPSettings(config.getString(XMPPConfigKey + ".hostname"),
+      config.getInt(XMPPConfigKey + ".port"),
+      config.getString(XMPPConfigKey + ".domain"),
+      config.getString(XMPPConfigKey + ".security-mode"),
+      config.getBoolean(XMPPConfigKey + ".debug"))
+  }
+
+  def loadDataStoreSettings(config: Config, mappingsFile: Path): DataStoreSettings = {
+    import DataMappingReads._
+    val mappingsJson = JsonFileHelper.getContents(mappingsFile)
+    val genericFileDataMap = (mappingsJson \ "generic").as[ComplexObject]
+
+    val dataMapping: Map[String, ComplexObject] = (mappingsJson \ "dataMappings").as[JsArray].value.toList.flatMap(value => {
+      val types = (value \ "types").as[List[String]]
+      val mapping = (value \ "conf").as[ComplexObject]
+      types.map(_ -> mapping)
+    }).toMap
+
+    DataStoreSettings(config.getString(DataStoreConfigKey + ".root-directory"), genericFileDataMap, dataMapping)
+  }
+
+  def getSupportedLanguages(languagesFile: Path): Map[String, String] = {
+    JsonFileHelper.getContents(languagesFile).as[Map[String, String]]
+  }
+}
+
+class Module(environment: Environment, configuration: Configuration) extends AbstractModule with AkkaGuiceSupport {
   override def configure(): Unit = {
     val xmppSettings = loadXMPPSettings(configuration.underlying)
+    //TODO APPARENTLY WE NEED TO CLOSE THESE SOURCE OBJECTS?!? ZOMG WE USE SOURCE ALL OVER THE PLACE!!!
+    val dataStoreSettings = loadDataStoreSettings(configuration.underlying, Paths.get(MappingsFile))
+    val supportedLanguages = getSupportedLanguages(Paths.get(LanguagesFile))
+
     bindActor[SessionManager]("session-manager", props =>
       Props(classOf[SessionManager],
         SmackXMPPSession.connectToServer _,
-        createDataStoreConnection(loadDataStoreSettings(configuration.underlying)),
-        getSupportedLanguages,
+        createDataStoreConnection(dataStoreSettings),
+        supportedLanguages,
         xmppSettings,
         generateUUID _
       )
@@ -60,35 +92,5 @@ class Module(environment: Environment, configuration: Configuration) extends Abs
 
   private def generateUUID: String = {
     UUID.randomUUID.toString
-  }
-
-  private def getSupportedLanguages: Map[String, String] = {
-    Json.parse(Source.fromFile(LanguagesFile).mkString).as[Map[String, String]]
-  }
-
-  private def loadDataStoreSettings(config: Config): DataStoreSettings = {
-    import DataMappingReads._
-    val mappingsJson = Json.parse(Source.fromFile(MappingsFile).mkString)
-    val genericFileDataMap = (mappingsJson \ "generic").as[ComplexObject]
-
-    val dataMapping: Map[String, ComplexObject] = (mappingsJson \ "dataMappings").as[JsArray].value.toList.flatMap(value => {
-      val types = (value \ "types").as[List[String]]
-      val mapping = (value \ "conf").as[ComplexObject]
-      types.map(_ -> mapping)
-    }).toMap
-
-    DataStoreSettings(config.getString(DataStoreConfigKey + ".root-directory"), genericFileDataMap, dataMapping)
-  }
-
-  private def loadXMPPSettings(config: Config): XMPPSettings = {
-    //TODO: This method shouldn't have a side effect...
-    if (config.getBoolean(XMPPConfigKey + ".debug")) {
-      SmackConfiguration.DEBUG = true
-    }
-
-    XMPPSettings(config.getString(XMPPConfigKey + ".hostname"),
-      config.getInt(XMPPConfigKey + ".port"),
-      config.getString(XMPPConfigKey + ".domain"),
-      config.getString(XMPPConfigKey + ".security-mode"))
   }
 }

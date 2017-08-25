@@ -1,9 +1,10 @@
 package tela.datastore
 
 import java.io.InputStream
-import java.text.SimpleDateFormat
+import java.time.format.DateTimeFormatter
+import java.time.{ZoneId, ZonedDateTime}
 import java.util
-import java.util.{Collections, Locale}
+import java.util.Collections
 
 import net.fortuna.ical4j.data.CalendarBuilder
 import net.fortuna.ical4j.model.property.{DtStart, Geo}
@@ -18,7 +19,7 @@ import scala.reflect.ClassTag
 //TODO This is a very rudimentary parser that is unlikely to stand up very well in the real world
 //Hopefully Tika includes an ical parser soon
 class ICalParser extends AbstractParser {
-  private val dateFormatter = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US)
+  private val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME
 
   override def getSupportedTypes(context: ParseContext): util.Set[MediaType] = Collections.singleton(MediaType.parse(ICalContentType))
 
@@ -30,7 +31,10 @@ class ICalParser extends AbstractParser {
         metadata.set(TikaCoreProperties.LATITUDE, property.getLatitude.toString)
         metadata.set(TikaCoreProperties.LONGITUDE, property.getLongitude.toString)
       })
-      property[DtStart](Property.DTSTART, component).foreach(property => metadata.set(TikaCoreProperties.METADATA_DATE, dateFormatter.format(property.getDate)))
+      property[DtStart](Property.DTSTART, component).foreach(property => {
+        val formattedDate = ZonedDateTime.ofInstant(property.getDate.toInstant, ZoneId.of("UTC")).format(dateFormatter)
+        metadata.set(TikaCoreProperties.METADATA_DATE, formattedDate)
+      })
     })
   }
 
