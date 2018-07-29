@@ -2,9 +2,7 @@ name := "tela"
 
 version in Global := "0.0"
 
-scalaVersion in Global := "2.11.7"
-
-sbtVersion in Global := "0.13.13"
+scalaVersion in Global := "2.12.6"
 
 lazy val tela = (project in file(".")) aggregate(runner, baseinterfaces, xmpp, web, datastore)
 

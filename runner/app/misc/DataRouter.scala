@@ -1,7 +1,6 @@
 package misc
 
 import javax.inject.Inject
-
 import play.api.mvc.RequestHeader
 import play.api.routing.Router
 import play.api.routing.Router.Routes
@@ -32,7 +31,9 @@ trait ModifiedSimpleRouter extends Router { self =>
         def routes = {
           val p = prefix
           val prefixed: PartialFunction[RequestHeader, RequestHeader] = {
-            case rh: RequestHeader if rh.path.startsWith(p) => rh.copy(path = rh.path.drop(p.length - 1))
+            case rh: RequestHeader if rh.path.startsWith(p) =>
+              val newPath = rh.path.drop(p.length - 1)
+              rh.withTarget(rh.target.withPath(newPath))
           }
           Function.unlift(prefixed.lift.andThen(_.flatMap(self.routes.lift)))
         }

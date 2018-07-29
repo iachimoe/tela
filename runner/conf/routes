@@ -14,4 +14,4 @@ GET        /settings/languages  @tela.web.SettingsController.listAvailableLangua
 
 GET        /events              @tela.web.EventsController.webSocket
 
-GET        /webjars/*file       controllers.WebJarAssets.at(file)
+->         /webjars             webjars.Routes

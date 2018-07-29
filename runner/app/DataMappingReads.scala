@@ -6,7 +6,7 @@ import tela.baseinterfaces._
 
 object DataMappingReads {
   implicit val simpleObjectReads: Reads[SimpleObject] = (
-    (JsPath \ "properties").read[List[String]] and
+    (JsPath \ "properties").read[Vector[String]] and
       (JsPath \ "dataType").read[String].map(DataType.withName)
     ) (SimpleObject.apply _)
 

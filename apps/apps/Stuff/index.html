@@ -8,7 +8,7 @@
         if (textQuery == "") {
             var query = "PREFIX schema: <http://schema.org/>\nDESCRIBE ?s WHERE {?s schema:encodingFormat ?o }";
 
-            parent.makeRESTRequest("/data?query=" + query, function (responseText) {
+            parent.makeRESTRequest("/data?query=" +  encodeURIComponent(query), function (responseText) {
                 populateMediaInfoTable(JSON.parse(responseText));
             });
         } else {
@@ -21,7 +21,7 @@
                 }
                 query += "} } UNION {?s schema:encodingFormat ?o . {?s ?a ?b} . FILTER regex(?b, \".*" + textQuery + ".*\", \"i\") } }";
 
-                parent.makeRESTRequest("/data?query=" + query, function (responseText2) {
+                parent.makeRESTRequest("/data?query=" +  encodeURIComponent(query), function (responseText2) {
                     populateMediaInfoTable(JSON.parse(responseText2));
                 });
             });
