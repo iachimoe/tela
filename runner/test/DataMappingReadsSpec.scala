@@ -1,7 +1,7 @@
 import java.net.URI
 
 import DataMappingReads._
-import org.scalatest.Matchers._
+import org.scalatest.matchers.should.Matchers._
 import play.api.libs.json.Json
 import tela.baseinterfaces.{BaseSpec, ComplexObject, DataStoreConnection, SimpleObject}
 

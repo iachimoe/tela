@@ -11,7 +11,7 @@ import tela.baseinterfaces.DataStoreConnection._
 import tela.baseinterfaces.{ComplexObject, DataType, SimpleObject}
 import tela.datastore.MetadataMapper._
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.math.BigDecimal.RoundingMode
 
 object MetadataMapper {

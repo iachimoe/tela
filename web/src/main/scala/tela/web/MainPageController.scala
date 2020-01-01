@@ -6,7 +6,7 @@ import java.util.UUID
 import akka.actor.ActorRef
 import akka.pattern.ask
 import javax.inject.{Inject, Named}
-import play.api.Logger
+import play.api.Logging
 import play.api.data.Form
 import play.api.data.Forms._
 import play.api.libs.json.{JsLookupResult, JsValue}
@@ -47,7 +47,7 @@ class MainPageController @Inject()(
                                     @Named("login-page-root") documentRoot: Path,
                                     @Named("app-index-file") appIndex: Path,
                                     controllerComponents: ControllerComponents
-                                  )(implicit ec: ExecutionContext) extends AbstractController(controllerComponents) {
+                                  )(implicit ec: ExecutionContext) extends AbstractController(controllerComponents) with Logging {
   private val appIndexData = JsonFileHelper.getContents(appIndex)
 
   private val loginDetailsForm = Form(mapping(
@@ -72,7 +72,7 @@ class MainPageController @Inject()(
   }
 
   private def showMainPage(userData: UserData) = {
-    Logger.info(s"Showing main page for user ${userData.username}")
+    logger.info(s"Showing main page for user ${userData.username}")
     val preferredLanguage: JsLookupResult = appIndexData \ LanguagesKeyInIndexHash \ userData.preferredLanguage
     val languageToUse = preferredLanguage.toOption.map(_.toString()).getOrElse((appIndexData \ LanguagesKeyInIndexHash \ DefaultLanguage).as[JsValue].toString)
     Ok(getContent(documentRoot, IndexPage, userData.preferredLanguage, Map(UserTemplateKey -> userData.username,
@@ -82,13 +82,13 @@ class MainPageController @Inject()(
   }
 
   private def handleLogout(request: Request[Any], sessionId: UUID, userData: UserData) = {
-    Logger.info(s"User ${userData.username} logging out")
+    logger.info(s"User ${userData.username} logging out")
     sessionManager ! Logout(sessionId)
     showLoginPage(request, Map(UserTemplateKey -> userData.username)).withCookies(createSessionCookie(sessionId, MainPageController.CookieExpiresNow))
   }
 
   private def showLoginPage(request: Request[Any], templateMap: Map[String, String] = Map.empty): Result = {
-    Logger.info(s"Showing login page")
+    logger.info(s"Showing login page")
     Ok(getContent(documentRoot, LoginPage, getLanguageFromRequestHeader(request), templateMap)).as(HTML)
   }
 

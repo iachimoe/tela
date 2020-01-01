@@ -8,14 +8,14 @@ import java.util.concurrent.TimeUnit
 import akka.actor.ActorRef
 import akka.pattern.ask
 import akka.util.Timeout
-import play.api.Logger
+import play.api.Logging
 import play.api.mvc.RequestHeader
 import tela.web.SessionManager.GetSession
 
-import scala.collection.JavaConverters._
 import scala.concurrent.{ExecutionContext, Future}
+import scala.jdk.CollectionConverters._
 
-package object web {
+package object web extends Logging {
   private[web] val JsonLdContentType: String = "application/ld+json"
 
   private[web] val SessionIdCookieName = "sessionId"
@@ -30,7 +30,7 @@ package object web {
   def getSessionFromRequest(request: RequestHeader, sessionManager: ActorRef)(implicit ec: ExecutionContext): Future[Option[(UUID, UserData)]] = {
     request.cookies.get(SessionIdCookieName).map(cookie => {
       val sessionId = UUID.fromString(cookie.value)
-      Logger.info(s"Request for session $sessionId")
+      logger.info(s"Request for session $sessionId")
       (sessionManager ? GetSession(sessionId)).mapTo[Option[UserData]].map(_.map(userData => sessionId -> userData))
     }).getOrElse(Future.successful(None))
   }

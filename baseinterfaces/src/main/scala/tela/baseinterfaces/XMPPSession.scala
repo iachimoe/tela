@@ -14,7 +14,7 @@ object LoginFailure {
 
 }
 
-sealed abstract class Presence
+sealed trait Presence
 
 object Presence {
 

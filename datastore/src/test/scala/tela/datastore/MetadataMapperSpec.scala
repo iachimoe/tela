@@ -8,11 +8,11 @@ import org.eclipse.rdf4j.model._
 import org.eclipse.rdf4j.model.impl.{LinkedHashModel, SimpleValueFactory}
 import org.eclipse.rdf4j.model.util.Models
 import org.eclipse.rdf4j.model.vocabulary.RDF
-import org.scalatest.Matchers._
+import org.scalatest.matchers.should.Matchers._
 import tela.baseinterfaces.DataStoreConnection._
 import tela.baseinterfaces._
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 class MetadataMapperSpec extends DataStoreBaseSpec {
   private val valueFactory = SimpleValueFactory.getInstance

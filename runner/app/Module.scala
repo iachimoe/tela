@@ -22,7 +22,7 @@ object Module {
   private val LanguagesFile = AppRoot.resolve("languages.json")
   private val MappingsFile = AppRoot.resolve("mappings.json")
 
-  private val LoginPageRoot = Paths.get("web/src/main/html")
+  private val LoginPageRoot = Paths.get("mainpage")
 
   private val TikaConfigFileName = Paths.get("tika.xml")
   private val XMPPConfigKey = "xmpp-config"

@@ -3,7 +3,7 @@ import java.nio.file.Paths
 
 import Module.DataStoreSettings
 import com.typesafe.config.ConfigFactory
-import org.scalatest.Matchers._
+import org.scalatest.matchers.should.Matchers._
 import play.api.Configuration
 import tela.baseinterfaces._
 

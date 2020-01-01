@@ -11,7 +11,7 @@ import org.eclipse.rdf4j.rio.RDFFormat
 import org.mockito.ArgumentMatchers._
 import org.mockito.Mockito._
 import org.mockito.{ArgumentMatcher, ArgumentMatchers}
-import org.scalatest.Matchers._
+import org.scalatest.matchers.should.Matchers._
 import tela.baseinterfaces.{ComplexObject, XMPPSession}
 
 import scala.xml._

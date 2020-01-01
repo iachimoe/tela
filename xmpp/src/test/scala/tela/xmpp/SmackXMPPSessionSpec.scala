@@ -25,16 +25,17 @@ import org.jxmpp.jid.parts.Resourcepart
 import org.mockito.ArgumentMatchers._
 import org.mockito.Mockito._
 import org.mockito.{ArgumentCaptor, ArgumentMatcher}
-import org.scalatest.Matchers._
+import org.scalatest.matchers.should.Matchers._
+import org.scalatest.OptionValues
 import tela.baseinterfaces._
 import tela.xmpp.SmackXMPPSession.CallSignal
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.xml.{Elem, NodeSeq, XML}
 
 //TODO Smack seems to be getting harder to test with each successive version.
 //Using PowerMockito to more effectively mock AbstractXMPPConnection may be the most practical solution
-class SmackXMPPSessionSpec extends BaseSpec {
+class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
   private val SmackUsernameKey = "username"
   private val SmackPasswordKey = "password"
 
@@ -43,6 +44,8 @@ class SmackXMPPSessionSpec extends BaseSpec {
   private val TestFullJid = s"$TestBareJid/$TestResource"
   //TODO Reference constant for callSignal element name
   private val RawTestCallSignalPacket = <callSignal xmlns={SmackXMPPSession.TelaURN}>{TestCallSignalData}</callSignal>.toString()
+
+  private val AsyncWaitTimeoutMs = 5000
 
   private class TestEnvironment(val connection: TestableXMPPConnection, val sessionListener: XMPPSessionListener)
 
@@ -217,6 +220,10 @@ class SmackXMPPSessionSpec extends BaseSpec {
     val contactsConnection = mock[XMPPConnection]
     when(contactsConnection.isAuthenticated).thenReturn(true)
     when(contactsConnection.isAnonymous).thenReturn(false)
+
+    // The Roster.reload method sends an empty RosterPacket and expects to get a future back
+    when(contactsConnection.sendIqRequestAsync(any())).thenReturn(new SmackFuture[IQ, Exception] {})
+
     new SmackXMPPSession(contactsConnection, mock[XMPPSessionListener], TestXMPPSettings) -> contactsConnection
   }
 
@@ -252,7 +259,7 @@ class SmackXMPPSessionSpec extends BaseSpec {
 
   "CallSignal" should "generate appropriate generate appropriate IQ packet of type 'get'" in testEnvironment { environment =>
     val callSignal = new CallSignal(TestCallSignalData)
-    val packetAsXML: NodeSeq = XML.loadString(callSignal.toXML.toString)
+    val packetAsXML: NodeSeq = XML.loadString(callSignal.toXML(null).toString)
     packetAsXML.asInstanceOf[Elem].label should === ("iq")
 
     // We explicitly set the type of the CallSignal to be set when we're actually sending it
@@ -322,7 +329,7 @@ class SmackXMPPSessionSpec extends BaseSpec {
 
     // We use the index 1 because the roster listener gets added first, then the chat listener (in accordance with our connectToServer method)
     getValueFromArgumentCaptor(packetListenerCaptor, 1).processStanza(message)
-    verify(environment.sessionListener).chatMessageReceived(TestBareJid, TestChatMessage)
+    verify(environment.sessionListener, timeout(AsyncWaitTimeoutMs)).chatMessageReceived(TestBareJid, TestChatMessage)
   }
 
   private def assertThatReceiptOfPresenceChangeForContact1IsHandledCorrectly(expectedResult: tela.baseinterfaces.Presence,
@@ -334,7 +341,7 @@ class SmackXMPPSessionSpec extends BaseSpec {
     presence.setFrom(JidCreate.bareFrom(TestContact1))
     reset(sessionListener) //Need to do this to ensure that old calls with same expected values don't cause failures
     stanzaListener.processStanza(presence)
-    verify(sessionListener).presenceChanged(ContactInfo(TestContact1, expectedResult))
+    verify(sessionListener, timeout(AsyncWaitTimeoutMs)).presenceChanged(ContactInfo(TestContact1, expectedResult))
   }
 
   private def getValueFromArgumentCaptor[T](captor: ArgumentCaptor[T], index: Int): T = {
@@ -367,7 +374,7 @@ class SmackXMPPSessionSpec extends BaseSpec {
   }
 
   private def connectToServerAndGetSession(connection: TestableXMPPConnection, sessionListener: XMPPSessionListener): XMPPSession = {
-    connectToServer(connection, sessionListener).right.get
+    connectToServer(connection, sessionListener).toOption.value
   }
 
   private def verifyPresencePacketSent(connection: TestableXMPPConnection, presence: Presence): Unit = {

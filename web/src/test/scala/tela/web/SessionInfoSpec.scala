@@ -2,7 +2,7 @@ package tela.web
 
 import akka.actor.{ActorRef, ActorSystem}
 import akka.testkit.TestProbe
-import org.scalatest.Matchers._
+import org.scalatest.matchers.should.Matchers._
 import tela.baseinterfaces.{DataStoreConnection, XMPPSession}
 
 class SessionInfoSpec extends WebBaseSpec {

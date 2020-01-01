@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path, Paths}
 
 import akka.actor.ActorRef
 import akka.testkit.TestActor.NoAutoPilot
-import org.scalatest.Matchers._
+import org.scalatest.matchers.should.Matchers._
 import play.api.http.{HeaderNames, Status}
 import play.api.libs.json.JsValue
 import play.api.mvc.{Cookie, Result}
@@ -13,7 +13,7 @@ import play.api.test.FakeRequest
 import tela.baseinterfaces.LoginFailure
 import tela.web.SessionManager.{GetSession, Login, Logout}
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.{Await, Future}
 

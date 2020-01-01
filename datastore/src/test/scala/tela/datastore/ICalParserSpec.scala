@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 import org.apache.tika.metadata.{Metadata, TikaCoreProperties}
 import org.apache.tika.parser.ParseContext
 import org.apache.tika.sax.BodyContentHandler
-import org.scalatest.Matchers._
+import org.scalatest.matchers.should.Matchers._
 
 class ICalParserSpec extends DataStoreBaseSpec {
   "ICalParser" should "extract title, description lat/long and date for event" in {

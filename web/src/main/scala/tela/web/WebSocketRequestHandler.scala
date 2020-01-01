@@ -3,14 +3,14 @@ package tela.web
 import java.util.UUID
 
 import akka.actor.{Actor, ActorRef}
-import play.api.Logger
+import play.api.Logging
 import play.api.libs.json.Reads._
 import play.api.libs.json._
 import tela.baseinterfaces.Presence
 import tela.web.JSONConversions._
 import tela.web.SessionManager._
 
-class WebSocketRequestHandler(sessionManager: ActorRef, sessionId: UUID) extends Actor {
+class WebSocketRequestHandler(sessionManager: ActorRef, sessionId: UUID) extends Actor with Logging {
   override def receive: Receive = {
     case json: JsValue => getAction(json) match {
       case SetPresenceAction => sessionManager ! SetPresence(sessionId, Presence.getFromString((json \ DataKey).as[String]))
@@ -22,7 +22,7 @@ class WebSocketRequestHandler(sessionManager: ActorRef, sessionId: UUID) extends
   }
 
   override def postStop(): Unit = {
-    Logger.info(s"Websocket for $sessionId closing")
+    logger.info(s"Websocket for $sessionId closing")
     sessionManager ! UnregisterWebSocket(sessionId, self)
   }
 

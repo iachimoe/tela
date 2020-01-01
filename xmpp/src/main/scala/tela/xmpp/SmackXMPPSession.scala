@@ -30,7 +30,7 @@ import tela.baseinterfaces
 import tela.baseinterfaces._
 import tela.xmpp.SmackXMPPSession._
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 object SmackXMPPSession {
   //TODO Allowing this for now in order to facilitate non-SSL localhost connections...
@@ -188,7 +188,7 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
     val node = getNode(manager, nodeName, connection.getUser.asUnescapedString()).getOrElse(createNode(manager, nodeName))
 
     log.info("User {} publishing to node {}", connection.getUser, node)
-    val payload = new SimplePayload(null, null, content)
+    val payload = new SimplePayload(content)
     val payloadItem = new PayloadItem(null, payload)
     node.publish(payloadItem)
   }
@@ -197,7 +197,7 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
     val manager = PubSubManager.getInstance(connection, JidCreate.bareFrom(user))
 
     getNode(manager, nodeName, user).flatMap(node => {
-      node.getItems[PayloadItem[SimplePayload]]().asScala.headOption.map(_.getPayload.toXML.toString)
+      node.getItems[PayloadItem[SimplePayload]]().asScala.headOption.map(_.getPayload.toXML(null))
     }).getOrElse(<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"></rdf:RDF>.toString())
   }
 

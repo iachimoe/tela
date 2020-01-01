@@ -5,7 +5,7 @@ import java.nio.file.{Files, Paths}
 import akka.actor.ActorRef
 import akka.stream.Materializer
 import akka.testkit.TestActor.NoAutoPilot
-import org.scalatest.Matchers._
+import org.scalatest.matchers.should.Matchers._
 import play.api.http._
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.Files.{SingletonTemporaryFileCreator, TemporaryFile}
@@ -16,7 +16,7 @@ import play.api.test.FakeRequest
 import tela.web.JSONConversions._
 import tela.web.SessionManager._
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.reflect.classTag
 
@@ -24,7 +24,7 @@ class DataControllerSpec extends SessionManagerClientBaseSpec {
   private def testEnvironment(runTest: (TestEnvironment[DataController], Materializer) => Unit): Unit = {
     val app = new GuiceApplicationBuilder().build()
     try {
-      implicit val bodyParser = app.injector.instanceOf[BodyParsers.Default]
+      implicit val bodyParser: BodyParsers.Default = app.injector.instanceOf[BodyParsers.Default]
       runTest(createTestEnvironment(
         (sessionManager, _) =>
           new DataController(new UserAction(sessionManager), sessionManager, app.injector.instanceOf[ControllerComponents])), app.materializer)
@@ -75,7 +75,7 @@ class DataControllerSpec extends SessionManagerClientBaseSpec {
       case _: PublishData => NoAutoPilot
     })
 
-    implicit val mat = materializer
+    implicit val mat: Materializer = materializer
 
     val result = call(environment.client.publishData(TestDataObjectUri.toString), FakeRequest().
       withCookies(Cookie(SessionIdCookieName, TestSessionIdAsString)).
@@ -104,11 +104,8 @@ class DataControllerSpec extends SessionManagerClientBaseSpec {
     )
     val body = FakeRequest("POST", "/").withCookies(Cookie(SessionIdCookieName, TestSessionIdAsString)).withMultipartFormDataBody(data)
 
-    implicit val anyContentAsMultipartFormWritable: Writeable[AnyContentAsMultipartFormData] = {
-      MultipartFormDataWritable.singleton.map(_.mfd)
-    }
-
-    val result = call(environment.client.uploadMediaItem(), body, body.body)(anyContentAsMultipartFormWritable, materializer)
+    implicit val mat: Materializer = materializer
+    val result = call(environment.client.uploadMediaItem(), body, body.body)
 
     environment.sessionManagerProbe.expectMsg(GetSession(TestSessionId))
     val storeMediaItemMessage = environment.sessionManagerProbe.expectMsgType(classTag[StoreMediaItem])
@@ -118,40 +115,6 @@ class DataControllerSpec extends SessionManagerClientBaseSpec {
     status(result) should === (Status.OK)
     val lines = Files.readAllLines(storeMediaItemMessage.temporaryFileLocation)
     lines.asScala.toVector should === (Vector(content))
-  }
-
-  //This was stolen off the internet. I have no idea how or why it works
-  //http://tech.fongmun.com/post/125479939452/test-multipartformdata-in-play
-  object MultipartFormDataWritable {
-    private val boundary = "--------ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
-
-    private def formatDataParts(data: Map[String, Seq[String]]) = {
-      val dataParts = data.flatMap { case (partKey, values) =>
-        values.map { value =>
-          s"--$boundary\r\n${HeaderNames.CONTENT_DISPOSITION}: form-data; name=$partKey\r\n\r\n$value\r\n"
-        }
-      }.mkString("")
-      Codec.utf_8.encode(dataParts)
-    }
-
-    private def filePartHeader(file: FilePart[TemporaryFile]) = {
-      val name = s"${file.key}"
-      val filename = s"${file.filename}"
-      val contentType = file.contentType.map(ct => s"${HeaderNames.CONTENT_TYPE}: $ct\r\n").getOrElse("")
-      Codec.utf_8.encode(s"--$boundary\r\n${HeaderNames.CONTENT_DISPOSITION}: form-data; name=$name; filename=$filename\r\n$contentType\r\n")
-    }
-
-    val singleton = Writeable[MultipartFormData[TemporaryFile]](
-      transform = { form: MultipartFormData[TemporaryFile] =>
-        formatDataParts(form.dataParts) ++
-          form.files.flatMap { file =>
-            val fileBytes = Files.readAllBytes(Paths.get(file.ref.getAbsolutePath))
-            filePartHeader(file) ++ fileBytes ++ Codec.utf_8.encode("\r\n")
-          } ++
-          Codec.utf_8.encode(s"--$boundary--")
-      },
-      contentType = Some(s"multipart/form-data; boundary=$boundary")
-    )
   }
 
   "downloadMediaItem" should "request the path to the file from the session manager and send the file to the client" in testEnvironment { (environment, materializer) =>

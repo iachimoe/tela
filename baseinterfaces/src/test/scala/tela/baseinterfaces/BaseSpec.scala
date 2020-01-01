@@ -3,10 +3,10 @@ package tela.baseinterfaces
 import java.net.URI
 
 import org.scalactic.TypeCheckedTripleEquals
-import org.scalatest.FlatSpec
-import org.scalatest.mockito.MockitoSugar
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatestplus.mockito.MockitoSugar
 
-trait BaseSpec extends FlatSpec with TypeCheckedTripleEquals with MockitoSugar {
+trait BaseSpec extends AnyFlatSpec with TypeCheckedTripleEquals with MockitoSugar {
   protected val TestDomain = "example.com"
   protected val TestXMPPSettings = XMPPSettings("localhost", 5222, TestDomain, "disabled", debug = false)
 

@@ -2,7 +2,7 @@ package tela.web
 
 import akka.actor.ActorRef
 import akka.testkit.TestActor.NoAutoPilot
-import org.scalatest.Matchers._
+import org.scalatest.matchers.should.Matchers._
 import play.api.http.{ContentTypes, Status}
 import play.api.mvc._
 import play.api.test.FakeRequest

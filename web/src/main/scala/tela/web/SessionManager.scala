@@ -208,8 +208,8 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
 
     //TODO createXMPPConnection is a blocking operation in practice....should be done in a separate thread pool?
     val connectionResult: Either[LoginFailure, XMPPSession] = createXMPPConnection(username, password, xmppSettings, listener)
-    connectionResult.right.foreach(session => createNewSession(sessionId, session, createDataStoreConnection(username, session), username, preferredLanguage))
-    val resultToSend = connectionResult.right.map(_ => sessionId)
+    connectionResult.foreach(session => createNewSession(sessionId, session, createDataStoreConnection(username, session), username, preferredLanguage))
+    val resultToSend = connectionResult.map(_ => sessionId)
     log.debug("Result of login request for user {}: {}", username, resultToSend)
     sender ! resultToSend
   }

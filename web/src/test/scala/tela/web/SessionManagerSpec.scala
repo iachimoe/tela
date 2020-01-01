@@ -10,7 +10,7 @@ import akka.testkit.{TestActorRef, TestProbe}
 import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
-import org.scalatest.Matchers._
+import org.scalatest.matchers.should.Matchers._
 import play.api.libs.json.{JsValue, Json}
 import tela.baseinterfaces._
 import tela.web.JSONConversions._
@@ -18,6 +18,7 @@ import tela.web.SessionManager._
 
 import scala.concurrent.Await
 import scala.language.postfixOps
+import scala.reflect.ClassTag
 
 class SessionManagerSpec extends WebBaseSpec {
   private class TestEnvironment(val xmppSession: XMPPSession,
@@ -311,7 +312,7 @@ class SessionManagerSpec extends WebBaseSpec {
     sessionManager ! message
   }
 
-  private def loginAndSendMessageExpectingResponse[ResponseType](environment: TestEnvironment, message: AnyRef, language: String = DefaultLanguage): ResponseType = {
+  private def loginAndSendMessageExpectingResponse[ResponseType : ClassTag](environment: TestEnvironment, message: AnyRef, language: String = DefaultLanguage): ResponseType = {
     val sessionManager = createSessionManager(Right(environment.xmppSession), environment)
 
     sendMessageAndGetResponse[Either[LoginFailure, UUID]](sessionManager, Login(TestUsername, TestPassword, language))
@@ -319,8 +320,8 @@ class SessionManagerSpec extends WebBaseSpec {
     sendMessageAndGetResponse[ResponseType](sessionManager, message)
   }
 
-  private def sendMessageAndGetResponse[ResponseType](actor: ActorRef, message: Any): ResponseType = {
-    Await.result(actor ? message, GeneralTimeoutAsDuration).asInstanceOf[ResponseType]
+  private def sendMessageAndGetResponse[ResponseType : ClassTag](actor: ActorRef, message: Any): ResponseType = {
+    Await.result((actor ? message).mapTo[ResponseType], GeneralTimeoutAsDuration)
   }
 
   private def createSessionManager(result: Either[LoginFailure, XMPPSession], environment: TestEnvironment): TestActorRef[SessionManager] = {

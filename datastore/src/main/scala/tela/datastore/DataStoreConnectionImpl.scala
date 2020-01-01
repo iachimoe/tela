@@ -31,7 +31,7 @@ import org.slf4j.LoggerFactory
 import tela.baseinterfaces.{ComplexObject, DataStoreConnection, XMPPSession}
 import tela.datastore.DataStoreConnectionImpl._
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 object DataStoreConnectionImpl {
   private[datastore] val MediaItemsFolderName = "mediaItems"
@@ -84,7 +84,7 @@ class DataStoreConnectionImpl(root: Path, user: String,
   luceneSail.setBaseSail(memoryStore)
 
   private[datastore] val repository = new SailRepository(luceneSail)
-  repository.initialize()
+  repository.init()
   private[datastore] val connection = repository.getConnection
 
   private val luceneIndex = FSDirectory.open(root.resolve(LuceneIndexName))
