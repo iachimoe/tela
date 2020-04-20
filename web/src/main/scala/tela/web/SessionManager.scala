@@ -186,12 +186,12 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
   }
 
   private def sendCallSignal(sessionId: UUID, user: String, data: String): Unit = {
-    log.debug("Session {} changing sending call signal {} to {}", sessionId, data, user)
+    log.debug("Session {} sending call signal {} to {}", sessionId, data, user)
     sessions(sessionId).xmppSession.sendCallSignal(user, data)
   }
 
   private def sendChatMessage(sessionId: UUID, user: String, message: String): Unit = {
-    log.debug("Session {} changing sending chat message {} to {}", sessionId, message, user)
+    log.debug("Session {} sending chat message {} to {}", sessionId, message, user)
     sessions(sessionId).xmppSession.sendChatMessage(user, message)
   }
 

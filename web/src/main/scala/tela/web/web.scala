@@ -44,10 +44,11 @@ package object web extends Logging {
 
   private def getTemplateMappings(documentRoot: Path, preferredLanguage: String, templateMap: Map[String, String]): Vector[Map[String, String]] = {
     val languageFile = getFileForLanguage(documentRoot, preferredLanguage)
+    val mappingsForDefaultLanguage = getMappingsForLanguage(getFileForLanguage(documentRoot, DefaultLanguage))
     if (preferredLanguage != DefaultLanguage && Files.exists(languageFile))
-      Vector(getMappingsForLanguage(getFileForLanguage(documentRoot, DefaultLanguage)), getMappingsForLanguage(languageFile), templateMap)
+      Vector(mappingsForDefaultLanguage, getMappingsForLanguage(languageFile), templateMap)
     else
-      Vector(getMappingsForLanguage(getFileForLanguage(documentRoot, DefaultLanguage)), templateMap)
+      Vector(mappingsForDefaultLanguage, templateMap)
   }
 
   private def getMappingsForLanguage(mappingsFile: Path): Map[String, String] = {

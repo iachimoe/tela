@@ -1,14 +1,8 @@
 <!DOCTYPE html>
 <html>
 <script>
-    var RTCPeerConnection = window.RTCPeerConnection || window.mozRTCPeerConnection || window.webkitRTCPeerConnection;
-    navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia;
-    var RTCSessionDescription = window.mozRTCSessionDescription || window.RTCSessionDescription;
-    var RTCIceCandidate = window.mozRTCIceCandidate || window.RTCIceCandidate;
-    var isChrome = !!navigator.webkitGetUserMedia;
-
     function videoCallSupport() {
-        return RTCPeerConnection && navigator.getUserMedia && RTCSessionDescription;
+        return RTCPeerConnection && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
     }
 
     // BEGIN DRAG/DROP
@@ -50,7 +44,7 @@
                 var user = message["data"]["user"];
                 var data = message["data"]["data"];
 
-                if (data.candidate) {
+                if (data.hasOwnProperty("candidate")) {
                     addCandidate(data);
                 }
                 else if (initiatedConnection) {
@@ -85,73 +79,71 @@
     }
 
     function callUser(user) {
-        startCall(user, function (peerConnection) {
-            peerConnection.createOffer(function (offer) {
-                peerConnection.setLocalDescription(new RTCSessionDescription(offer), function () {
+        startCall(user).then(function () {
+            peerConnection.createOffer().then(offer => {
+                peerConnection.setLocalDescription(new RTCSessionDescription(offer)).then(function () {
                     initiatedConnection = true;
                     sendMessage(offer, user);
                 }, error);
             }, error);
-        });
+        }, error);
     }
 
     function receiveCall(user, offer) {
-        startCall(user, function (peerConnection) {
-            peerConnection.setRemoteDescription(new RTCSessionDescription(offer), function () {}, error);
-            peerConnection.createAnswer(function (answer) {
-                peerConnection.setLocalDescription(new RTCSessionDescription(answer), function () {
-                    sendMessage(answer, user)
+        startCall(user).then(function () {
+            peerConnection.setRemoteDescription(new RTCSessionDescription(offer)).then(function () {
+                peerConnection.createAnswer().then(answer => {
+                    peerConnection.setLocalDescription(new RTCSessionDescription(answer)).then(function () {
+                        sendMessage(answer, user)
+                    }, error);
                 }, error);
             }, error);
-        });
+        }, error);
     }
 
-    function startCall(user, createOfferOrAnswer) {
-        navigator.getUserMedia(getAudioVideoStatus(), function (stream) {
-            peerConnection.onaddstream = function (event) {
-                handleBeginningOfCall(event.stream, stream);
-            };
-
+    function startCall(user) {
+        return navigator.mediaDevices.getUserMedia(getAudioVideoStatus()).then(stream => {
             peerConnection.oniceconnectionstatechange = function () {
                 if (peerConnection.iceConnectionState == 'disconnected' || peerConnection.iceConnectionState == 'closed') {
-                    stream.getTracks().forEach(function (track) { track.stop(); });
+                    stopTracks(stream);
                     handleEndOfCall();
                 }
             };
 
-            // Adding a local stream won't trigger the onaddstream callback
-            peerConnection.addStream(stream);
+            peerConnection.ontrack = function (event) {
+                handleBeginningOfCall(event.streams[0], stream);
+            };
+
+            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
 
             peerConnection.onicecandidate = function(evt) {
                 if (evt.candidate) {
                     sendMessage(evt.candidate, user);
                 }
             };
-
-            createOfferOrAnswer(peerConnection);
         }, error);
     }
 
     function initialisePeerConnection() {
         if (!videoCallSupport())
             return null;
-        if (isChrome)
-            return new RTCPeerConnection({
-                iceServers: [
-                    {url: 'stun:stun.l.google.com:19302'}
-                ]
-            });
-        else
-            return new RTCPeerConnection();
+        return new RTCPeerConnection();
     }
 
     function handleConfirmationOfCall(offer) {
-        peerConnection.setRemoteDescription(new RTCSessionDescription(offer), function () {
-        }, error);
+        peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
     }
 
     function endCall() {
         peerConnection.close();
+
+        // We no longer get an oniceconnectionstatechange indicating that the connection's closed, so we clean up here.
+        stopTracks(document.getElementById("localVideo").srcObject);
+        handleEndOfCall();
+    }
+
+    function stopTracks(stream) {
+        stream.getTracks().forEach(function (track) { track.stop(); });
     }
 
     function getAudioVideoStatus() {
@@ -185,7 +177,7 @@
 
     function playVideo(elementName, stream) {
         var video = document.getElementById(elementName);
-        video.src = URL.createObjectURL(stream);
+        video.srcObject = stream;
         video.play();
     }
 

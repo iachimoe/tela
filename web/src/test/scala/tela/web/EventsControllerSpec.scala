@@ -1,12 +1,12 @@
 package tela.web
 
-import akka.actor.{ActorRef, ActorSystem}
-import akka.stream.{ActorMaterializer, Materializer}
+import akka.actor.ActorSystem
+import akka.stream.Materializer
 import akka.stream.scaladsl.{Flow, Keep}
 import akka.stream.testkit.scaladsl.{TestSink, TestSource}
 import akka.testkit.TestActor.{KeepRunning, NoAutoPilot}
-import org.scalatest.matchers.should.Matchers._
 import org.scalatest.OptionValues
+import org.scalatest.matchers.should.Matchers._
 import play.api.http.websocket.{Message, TextMessage}
 import play.api.libs.json.Json
 import play.api.mvc.{Cookie, Result, Results}
@@ -15,13 +15,14 @@ import tela.web.JSONConversions.{ActionKey, GetContactListAction}
 import tela.web.SessionManager.{GetContactList, GetSession, RegisterWebSocket}
 
 import scala.concurrent.Await
-import scala.concurrent.ExecutionContext.Implicits
 
 class EventsControllerSpec extends SessionManagerClientBaseSpec with OptionValues {
   private def testEnvironment(runTest: TestEnvironment[EventsController] => Unit): Unit = {
-    runTest(createTestEnvironment((sessionManager, actorSystem) =>
-      new EventsController(sessionManager)(actorSystem, ActorMaterializer()(actorSystem), Implicits.global))
-    )
+    runTest(createTestEnvironment((sessionManager, actorSystem) => {
+      implicit val as: ActorSystem = actorSystem
+      import scala.concurrent.ExecutionContext.Implicits.global
+      new EventsController(sessionManager)
+    }))
   }
 
   "webSocket" should "return BadRequest if no session cookie is supplied" in testEnvironment { environment =>
@@ -35,7 +36,7 @@ class EventsControllerSpec extends SessionManagerClientBaseSpec with OptionValue
   }
 
   it should "register with SessionManager and forward subsequent input" in testEnvironment { environment =>
-    environment.configureTestProbeWithGetSessionHandler(shouldReturnUserData = true, (sender: ActorRef) => {
+    environment.configureTestProbeWithGetSessionHandler(shouldReturnUserData = true, _ => {
       case _: RegisterWebSocket => KeepRunning
       case _: GetContactList => NoAutoPilot
     })

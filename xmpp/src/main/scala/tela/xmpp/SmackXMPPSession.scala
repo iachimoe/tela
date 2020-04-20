@@ -7,7 +7,7 @@ import org.jivesoftware.smack.SmackException.ConnectionException
 import org.jivesoftware.smack.XMPPException.XMPPErrorException
 import org.jivesoftware.smack._
 import org.jivesoftware.smack.chat2.{Chat, ChatManager, IncomingChatMessageListener}
-import org.jivesoftware.smack.filter.StanzaTypeFilter
+import org.jivesoftware.smack.iqrequest.IQRequestHandler
 import org.jivesoftware.smack.packet.IQ.{IQChildElementXmlStringBuilder, Type}
 import org.jivesoftware.smack.packet.Presence.Mode
 import org.jivesoftware.smack.packet._
@@ -77,7 +77,7 @@ object SmackXMPPSession {
       Roster.getInstanceFor(connection).setSubscriptionMode(SubscriptionMode.accept_all)
       Roster.getInstanceFor(connection).addRosterListener(new ContactListChangeListener(session))
       ChatManager.getInstanceFor(connection).addIncomingListener(new TelaChatManagerListener(session))
-      connection.addAsyncStanzaListener(new CallSignalPacketListener(session), new StanzaTypeFilter(classOf[CallSignal]))
+      connection.registerIQRequestHandler(new CallSignalRequestHandler(session))
       Right(session)
     } catch {
       case _: SASLErrorException =>
@@ -121,12 +121,23 @@ object SmackXMPPSession {
     }
   }
 
-  private class CallSignalPacketListener(private val xmppSession: SmackXMPPSession) extends StanzaListener {
-    override def processStanza(packet: Stanza): Unit = {
+  private class CallSignalRequestHandler(private val xmppSession: SmackXMPPSession) extends IQRequestHandler {
+    override def handleIQRequest(iqRequest: IQ): IQ = {
       log.debug("User {} received call signal packet", xmppSession.connection.getUser)
-      val signal = packet.asInstanceOf[CallSignal]
+      val signal = iqRequest.asInstanceOf[CallSignal]
       xmppSession.sessionListener.callSignalReceived(signal.getFrom.asUnescapedString(), signal.data)
+      //TODO Apparently not returning a response is not compliant with the RFC, according to a comment in AbstractXMPPConnection
+      //But we're doing it because (I believe) this is what we've always done, and Smack supports it. But this should be fixed later...
+      null
     }
+
+    override def getMode: IQRequestHandler.Mode = IQRequestHandler.Mode.async
+
+    override def getType: Type = Type.set
+
+    override def getElement: String = CallSignalElementName
+
+    override def getNamespace: String = TelaURN
   }
 
   private class TelaChatManagerListener(private val xmppSession: SmackXMPPSession) extends IncomingChatMessageListener {
@@ -135,6 +146,7 @@ object SmackXMPPSession {
     }
   }
 
+  //TODO Should this be an IQ stanza, or is there a more appropriate type?
   private[xmpp] class CallSignal(val data: String) extends IQ(CallSignalElementName, TelaURN) {
     override def getIQChildElementBuilder(xml: IQChildElementXmlStringBuilder): IQChildElementXmlStringBuilder = {
       xml.rightAngleBracket()

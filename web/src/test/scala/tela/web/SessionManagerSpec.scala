@@ -229,7 +229,7 @@ class SessionManagerSpec extends WebBaseSpec {
     loginAndSendMessageExpectingResponse[String](environment, RetrieveData(TestSessionId, TestDataObjectUri)) should === ("[]")
   }
 
-  "RetrievePublishedData" should "as the data store to retrieve data published by another user" in testEnvironment { environment =>
+  "RetrievePublishedData" should "ask the data store to retrieve data published by another user" in testEnvironment { environment =>
     when(environment.dataStoreConnection.retrievePublishedDataAsJSON(TestContact1, TestDataObjectUri)).thenReturn("[]")
     loginAndSendMessageExpectingResponse[String](environment, RetrievePublishedData(TestSessionId, TestContact1, TestDataObjectUri)) should === ("[]")
   }

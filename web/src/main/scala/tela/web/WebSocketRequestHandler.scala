@@ -12,6 +12,7 @@ import tela.web.SessionManager._
 
 class WebSocketRequestHandler(sessionManager: ActorRef, sessionId: UUID) extends Actor with Logging {
   override def receive: Receive = {
+    //TODO Consider how bad data/errors are to be handled
     case json: JsValue => getAction(json) match {
       case SetPresenceAction => sessionManager ! SetPresence(sessionId, Presence.getFromString((json \ DataKey).as[String]))
       case GetContactListAction => sessionManager ! GetContactList(sessionId)

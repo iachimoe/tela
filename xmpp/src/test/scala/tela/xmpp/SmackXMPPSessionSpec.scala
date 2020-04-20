@@ -5,7 +5,7 @@ import java.io.StringReader
 import org.jivesoftware.smack.SmackException.ConnectionException
 import org.jivesoftware.smack._
 import org.jivesoftware.smack.filter.StanzaFilter
-import org.jivesoftware.smack.iqrequest.AbstractIqRequestHandler
+import org.jivesoftware.smack.iqrequest.{AbstractIqRequestHandler, IQRequestHandler}
 import org.jivesoftware.smack.packet.IQ.Type
 import org.jivesoftware.smack.packet.Presence.Mode
 import org.jivesoftware.smack.packet.{Presence, _}
@@ -28,7 +28,7 @@ import org.mockito.{ArgumentCaptor, ArgumentMatcher}
 import org.scalatest.matchers.should.Matchers._
 import org.scalatest.OptionValues
 import tela.baseinterfaces._
-import tela.xmpp.SmackXMPPSession.CallSignal
+import tela.xmpp.SmackXMPPSession.{CallSignal, CallSignalElementName, TelaURN}
 
 import scala.jdk.CollectionConverters._
 import scala.xml.{Elem, NodeSeq, XML}
@@ -150,20 +150,21 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
   "getContactList" should "send the user's contacts to the session listener" in testEnvironment { environment =>
     val session = createSessionWithUsername(environment.connection, environment.sessionListener)
 
-    val argument: ArgumentCaptor[AbstractIqRequestHandler] = ArgumentCaptor.forClass(classOf[AbstractIqRequestHandler])
-    verify(environment.connection).registerIQRequestHandler(argument.capture())
+    val requestHandlerCaptor: ArgumentCaptor[AbstractIqRequestHandler] = ArgumentCaptor.forClass(classOf[AbstractIqRequestHandler])
+    verify(environment.connection, atLeastOnce()).registerIQRequestHandler(requestHandlerCaptor.capture())
+    val contactListRequestHandler = getValueFromArgumentCaptor(requestHandlerCaptor, 0)
 
     val packetListenerCaptor: ArgumentCaptor[StanzaListener] = ArgumentCaptor.forClass(classOf[StanzaListener])
     verify(environment.connection, atLeastOnce()).addSyncStanzaListener(packetListenerCaptor.capture(), any[StanzaFilter]())
     // We use the index 0 because the roster listener gets added first, then the chat listener (in accordance with our connectToServer method)
     val stanzaListener = getValueFromArgumentCaptor(packetListenerCaptor, 0)
 
-    sendContactAddedEventToHandler(argument.getValue, TestContact1)
+    sendContactAddedEventToHandler(contactListRequestHandler, TestContact1)
     val presence: Presence = new Presence(Presence.Type.available, "", 0, Presence.Mode.away)
     presence.setFrom(JidCreate.bareFrom(TestContact1))
     stanzaListener.processStanza(presence)
 
-    sendContactAddedEventToHandler(argument.getValue, TestContact2)
+    sendContactAddedEventToHandler(contactListRequestHandler, TestContact2)
     presence.setFrom(JidCreate.bareFrom(TestContact2))
     stanzaListener.processStanza(presence)
 
@@ -183,15 +184,16 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
     // We use the index 0 because the roster listener gets added first, then the chat listener (in accordance with our connectToServer method)
     val stanzaListener = getValueFromArgumentCaptor(packetListenerCaptor, 0)
 
-    val argument: ArgumentCaptor[AbstractIqRequestHandler] = ArgumentCaptor.forClass(classOf[AbstractIqRequestHandler])
-    verify(environment.connection).registerIQRequestHandler(argument.capture())
+    val requestHandlerCaptor: ArgumentCaptor[AbstractIqRequestHandler] = ArgumentCaptor.forClass(classOf[AbstractIqRequestHandler])
+    verify(environment.connection, atLeastOnce()).registerIQRequestHandler(requestHandlerCaptor.capture())
+    val contactListRequestHandler = getValueFromArgumentCaptor(requestHandlerCaptor, 0)
 
     val contactAddedPacket1 = new RosterPacket()
     val item1 = new Item(JidCreate.entityBareFrom(TestContact1), TestContact1) //TODO This is duplicated in assertThatReceiptOfPresenceChangeForContact1IsHandledCorrectly
     item1.setItemType(RosterPacket.ItemType.both)
     contactAddedPacket1.addRosterItem(item1)
 
-    argument.getValue.handleIQRequest(contactAddedPacket1)
+    contactListRequestHandler.handleIQRequest(contactAddedPacket1)
 
     assertThatReceiptOfPresenceChangeForContact1IsHandledCorrectly(tela.baseinterfaces.Presence.Unknown, Presence.Type.unavailable, Presence.Mode.available, environment.sessionListener, stanzaListener)
     assertThatReceiptOfPresenceChangeForContact1IsHandledCorrectly(tela.baseinterfaces.Presence.Available, Presence.Type.available, Presence.Mode.available, environment.sessionListener, stanzaListener)
@@ -238,13 +240,14 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
     //but with our current testing approach it's tricky to set another value when the contact is being added
 
     createSessionWithUsername(environment.connection, environment.sessionListener)
-    val argument: ArgumentCaptor[AbstractIqRequestHandler] = ArgumentCaptor.forClass(classOf[AbstractIqRequestHandler])
-    verify(environment.connection).registerIQRequestHandler(argument.capture())
+    val requestHandlerCaptor: ArgumentCaptor[AbstractIqRequestHandler] = ArgumentCaptor.forClass(classOf[AbstractIqRequestHandler])
+    verify(environment.connection, atLeastOnce()).registerIQRequestHandler(requestHandlerCaptor.capture())
+    val contactListRequestHandler = getValueFromArgumentCaptor(requestHandlerCaptor, 0)
 
-    sendContactAddedEventToHandler(argument.getValue, TestContact1)
+    sendContactAddedEventToHandler(contactListRequestHandler, TestContact1)
     verify(environment.sessionListener).contactsAdded(Vector(ContactInfo(TestContact1, tela.baseinterfaces.Presence.Unknown)))
 
-    sendContactAddedEventToHandler(argument.getValue, TestContact2)
+    sendContactAddedEventToHandler(contactListRequestHandler, TestContact2)
     verify(environment.sessionListener).contactsAdded(Vector(ContactInfo(TestContact2, tela.baseinterfaces.Presence.Unknown)))
   }
 
@@ -284,20 +287,18 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
 
   "call signal packet in underlying connection" should "trigger callSignalReceived event on session listener" in testEnvironment { environment =>
     connectToServer(environment.connection, environment.sessionListener)
-    val packetListenerCaptor: ArgumentCaptor[StanzaListener] = ArgumentCaptor.forClass(classOf[StanzaListener])
-    val packetFilterCaptor: ArgumentCaptor[StanzaFilter] = ArgumentCaptor.forClass(classOf[StanzaFilter])
-    verify(environment.connection, atLeastOnce()).addAsyncStanzaListener(packetListenerCaptor.capture(), packetFilterCaptor.capture())
+    val requestHandlerCaptor: ArgumentCaptor[IQRequestHandler] = ArgumentCaptor.forClass(classOf[IQRequestHandler])
+    verify(environment.connection, atLeastOnce()).registerIQRequestHandler(requestHandlerCaptor.capture())
+
+    val iqHandler = requestHandlerCaptor.getValue
+    iqHandler.getType should === (IQ.Type.set)
+    iqHandler.getMode should === (IQRequestHandler.Mode.async)
+    iqHandler.getNamespace should === (TelaURN)
+    iqHandler.getElement should === (CallSignalElementName)
 
     val signal: CallSignal = createCallSignal(TestCallSignalData, s"$TestBareJid/${SmackXMPPSession.DefaultResourceName}", Type.set)
-
-    // We use the index 0 because we expect the listener to be the second one added (the first one is for presence).
-    getValueFromArgumentCaptor(packetFilterCaptor, 1).accept(signal) should === (true)
-
-    //verifying that our filter doesn't accept just a packet that isn't a call signal
-    packetFilterCaptor.getValue.accept(new AdHocCommandData) should === (false)
-
     signal.setFrom(JidCreate.bareFrom(TestBareJid))
-    getValueFromArgumentCaptor(packetListenerCaptor, 1).processStanza(signal)
+    iqHandler.handleIQRequest(signal) should === (null)
 
     verify(environment.sessionListener).callSignalReceived(TestBareJid, TestCallSignalData)
   }
