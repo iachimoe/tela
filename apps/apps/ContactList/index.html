@@ -1,33 +1,50 @@
 <!DOCTYPE html>
 <html>
+
+<link href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css" rel="stylesheet">
+
 <style>
     .presenceBubble {
-        width: 10px;
-        height: 10px;
+        width: 12px;
+        height: 12px;
         float: left;
-        margin-top: 4px;
+        margin-top: 5px;
+        border-radius: 50%;
+    }
+
+    ul {
+        list-style-type:none;
+    }
+
+    li {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    .contact-form {
+        padding: 3px;
     }
 </style>
 
 <script>
-    var connection = null;
+    let connection = null;
 
     function establishConnection() {
         connection = new WebSocket('ws://' + window.location.host + '/events');
 
         connection.onopen = function () {
-            var json = {"action": "getContactList"};
+            const json = {"action": "getContactList"};
             connection.send(JSON.stringify(json));
         };
 
         connection.onmessage = function (e) {
-            var message = JSON.parse(e.data);
+            const message = JSON.parse(e.data);
             if (message["action"] === "addContacts") {
-                var contacts = message["data"];
+                const contacts = message["data"];
                 displayAddedContacts(contacts);
             }
             else if (message["action"] === "presenceUpdate") {
-                var update = message["data"];
+                const update = message["data"];
                 changePresenceBubbleForContact(update["contact"], update["presence"]);
             }
         }
@@ -36,7 +53,7 @@
     function displayAddedContacts(contacts) {
         contacts.forEach(function (item) {
             if (getContact(item["contact"]) == null) {
-                var container = createContactNode(item["contact"]);
+                const container = createContactNode(item["contact"]);
                 document.getElementById("contacts").appendChild(container);
                 changePresenceBubbleForContact(item["contact"], item["presence"]);
             }
@@ -44,19 +61,19 @@
     }
 
     function changePresenceBubbleForContact(contact, presence) {
-        var contactDiv = getContact(contact);
+        const contactDiv = getContact(contact);
 
         if (contactDiv != null) {
-            var mappings = {"available": "limegreen", "away": "yellow", "donotdisturb": "red", "unknown": "grey"};
+            const mappings = {"available": "limegreen", "away": "yellow", "donotdisturb": "red", "unknown": "grey"};
             contactDiv.querySelector("div.presenceBubble").style.backgroundColor = mappings[presence];
         }
     }
 
     function getContact(contact) {
-        for (var i = 0; i < document.getElementById("contacts").childNodes.length; i++) {
-            var child = document.getElementById("contacts").childNodes[i];
+        for (let i = 0; i < document.getElementById("contacts").childNodes.length; i++) {
+            const child = document.getElementById("contacts").childNodes[i];
 
-            if (child.nodeType == 1) {
+            if (child.nodeType === 1) {
                 if (child.getAttribute("jid") === contact) {
                     return child;
                 }
@@ -66,17 +83,18 @@
     }
 
     function createContactNode(item) {
-        var container = document.createElement("div");
+        const container = document.createElement("li");
         container.setAttribute("jid", item);
         container.setAttribute("draggable", "true");
         container.setAttribute("ondragstart", "drag(event)");
+        container.setAttribute("class", "contactNode blah");
 
         addEventListeners(container, item);
 
-        var children = ["<div class='presenceBubble'></div>", "<span>&NonBreakingSpace;" + item + "</span>", "<br />", "<br />"];
-        for (var i = 0; i < children.length; i++) {
-            container.appendChild(createHtmlElementFromText(children[i]));
-        }
+        const children = ["<div class='presenceBubble'></div>", "<span>&NonBreakingSpace;" + item + "</span>"];
+        children.forEach(function (child) {
+            container.appendChild(createHtmlElementFromText(child));
+        });
 
         return container;
     }
@@ -84,14 +102,14 @@
     function addEventListeners(container, item) {
         container.addEventListener('touchmove', function (event) {
             event.preventDefault();
-            if (event.targetTouches.length == 1) {
+            if (event.targetTouches.length === 1) {
                 parent.childTouchDragMove(window, event.targetTouches[0]);
             }
         }, false);
 
         container.addEventListener('touchstart', function (event) {
             event.preventDefault();
-            if (event.targetTouches.length == 1) {
+            if (event.targetTouches.length === 1) {
                 parent.childTouchDragStart(window, event.targetTouches[0], item);
             }
         }, false);
@@ -103,21 +121,21 @@
     }
 
     function createHtmlElementFromText(code) {
-        var div = document.createElement('div');
+        const div = document.createElement('div');
         div.innerHTML = code;
         return div.firstChild;
     }
 
     function setPresence(presence) {
-        var json = {"action": "setPresence", "data": presence};
+        const json = {"action": "setPresence", "data": presence};
         connection.send(JSON.stringify(json));
     }
 
-    function addContact() {
-        if (document.getElementById("addContact").value !== "") {
-            var json = {"action": "addContact", "data": document.getElementById("addContact").value};
+    function sendAddContactRequest() {
+        if (document.getElementById("contactToAdd").value !== "") {
+            const json = {"action": "addContact", "data": document.getElementById("contactToAdd").value};
             connection.send(JSON.stringify(json));
-            document.getElementById("addContact").value = "";
+            document.getElementById("contactToAdd").value = "";
         }
     }
 
@@ -125,15 +143,30 @@
         ev.dataTransfer.setData("text", ev.target.attributes["jid"].value);
     }
 </script>
-<body onLoad="establishConnection()">
-<span><select onChange="setPresence(this.value)">
-    <option value="available">{{available}}</option>
-    <option value="away">{{away}}</option>
-    <option value="donotdisturb">{{doNotDisturb}}</option>
-</select>
-<input id="addContact"/><button type="button" onclick="addContact()">{{addContact}}</button></span><br/><br/>
 
-<div id="contacts">
+<body onLoad="establishConnection()">
+
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12 contact-form">
+            <select class="form-control form-control-sm" onChange="setPresence(this.value)">
+                <option value="available">{{available}}</option>
+                <option value="away">{{away}}</option>
+                <option value="donotdisturb">{{doNotDisturb}}</option>
+            </select>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-8 contact-form"><input id="contactToAdd" class="form-control form-control-sm" type="text" autocapitalize="off" /></div>
+        <div class="col-4 contact-form">
+            <button type="button" onclick="sendAddContactRequest()" class="btn btn-primary btn-sm btn-block">
+                {{addContact}}
+            </button>
+        </div>
+    </div>
+    <div class="row">
+        <ul id="contacts" class="col-12 list-group"></ul>
+    </div>
 </div>
 
 </body>

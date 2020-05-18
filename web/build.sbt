@@ -4,6 +4,8 @@ libraryDependencies ++= Seq(
   "com.typesafe.play" %% "play" % "2.8.1",
   "com.github.spullara.mustache.java" % "compiler" % "0.9.6",
   "org.webjars" %% "webjars-play" % "2.8.0",
+  "org.webjars" % "bootstrap" % "4.5.0",
+  "org.webjars" % "font-awesome" % "5.13.0",
   "org.webjars.bower" % "scribe" % "3.2.0",
   "org.webjars.bower" % "scribe-plugin-toolbar" % "1.0.0",
   "com.typesafe.play" %% "play-test" % "2.8.1" % Test,

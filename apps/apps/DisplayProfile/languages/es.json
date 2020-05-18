@@ -1,8 +1,8 @@
 {
     "myProfileUserLabel": "Mi perfil",
-    "nameLabel": "Nombre: ",
-    "jobTitleLabel": "Trabajo: ",
-    "emailLabel": "Email: ",
-    "telephoneLabel": "Teléfono: ",
-    "descriptionLabel": "Descripción: "
+    "nameLabel": "Nombre",
+    "jobTitleLabel": "Trabajo",
+    "emailLabel": "Email",
+    "telephoneLabel": "Teléfono",
+    "descriptionLabel": "Descripción"
 }

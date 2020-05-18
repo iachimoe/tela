@@ -3,7 +3,7 @@
         {
             "name": "app1",
             "address": "app1Address",
-            "isRight": false
+            "usesLargeScreen": false
         }
     ],
     "defaultApp": "app1",

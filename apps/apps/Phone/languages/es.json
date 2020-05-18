@@ -1,6 +1,6 @@
 {
     "unsupportedBrowserError": "Tu navegador no puede hacer llamadas de voz/video.",
     "hangUp": "Colgar",
-    "audioOnly": "Solo audio",
+    "audioOnly": "Sólo audio",
     "generalError": "Un error inesperado ocurrió en el sistema de telefonía."
 }

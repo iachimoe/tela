@@ -3,37 +3,37 @@
         {
             "name": "chat",
             "address": "apps/Chat/index.html",
-            "isRight": false
+            "usesLargeScreen": true
         },
         {
             "name": "phone",
             "address": "apps/Phone/index.html",
-            "isRight": false
+            "usesLargeScreen": true
         },
         {
             "name": "myStuff",
             "address": "apps/Stuff/index.html",
-            "isRight": false
+            "usesLargeScreen": true
         },
         {
             "name": "contactList",
             "address": "apps/ContactList/index.html",
-            "isRight": true
+            "usesLargeScreen": false
         },
         {
             "name": "displayProfile",
             "address": "apps/DisplayProfile/index.html",
-            "isRight": true
+            "usesLargeScreen": false
         },
         {
             "name": "settings",
             "address": "apps/Settings/index.html",
-            "isRight": true
+            "usesLargeScreen": false
         },
         {
             "name": "editProfile",
             "address": "apps/EditProfile/index.html",
-            "isRight": true
+            "usesLargeScreen": false
         }
     ],
     "defaultApp": "contactList",

@@ -294,7 +294,7 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
       false
     }
     else if (connectToServer(XmppStringUtils.parseLocalpart(connection.getUser.asUnescapedString()), existingPassword, ChangePasswordResource, changePasswordConnection, xmppSettings, new StubSessionListener).isLeft) {
-      log.info("Failed to change password for user {} due to connection error", connection.getUser)
+      log.info("Failed to change password for user {}", connection.getUser)
       false
     }
     else {

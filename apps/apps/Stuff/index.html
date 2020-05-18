@@ -1,173 +1,344 @@
 <!DOCTYPE html>
 <html>
 
+<link href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css" rel="stylesheet">
+<link href="/webjars/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+
 <script>
-    function loadMediaItemInfo() {
-        var textQuery = document.getElementById("searchText").value;
+    // BEGIN CONTENT DATA TYPES
 
-        if (textQuery == "") {
-            var query = "PREFIX schema: <http://schema.org/>\nDESCRIBE ?s WHERE {?s schema:encodingFormat ?o }";
+    class Content {
+        constructor(name, fileLocation, encodingFormat, expandToFillContainer) {
+            this.name = name;
+            this.fileLocation = fileLocation;
+            this.encodingFormat = encodingFormat;
+            this.expandToFillContainer = expandToFillContainer;
+        }
 
-            parent.makeRESTRequest("/data?query=" +  encodeURIComponent(query), function (responseText) {
-                populateMediaInfoTable(JSON.parse(responseText));
+        icon() {
+            return "far fa-file"
+        }
+
+        displayName() {
+            if (this.name === null) {
+                return this.encodingFormat;
+            } else {
+                return this.name;
+            }
+        }
+
+        linkToObject() {
+            const link = document.createElement('a');
+            link.href = "#";
+            link.innerHTML = "{{view}}";
+
+            link.addEventListener('click', this.showElementInLightbox());
+            return link;
+        }
+
+        lightboxContent() {
+            const iframe = document.createElement('iframe');
+            iframe.src = `/data?hash=${this.fileLocation}`;
+            return iframe;
+        }
+
+        showElementInLightbox() {
+            const thisRef = this;
+            return function (e) {
+                removeChildNodesFromElement("lightbox_content");
+
+                let sizeStyle = null;
+                if (thisRef.expandToFillContainer) {
+                    sizeStyle = 'width: 100%; height: 100%';
+                } else {
+                    sizeStyle = 'max-width: 100%; max-height: 100%';
+                }
+
+                const element = thisRef.lightboxContent();
+                element.style = sizeStyle + '; background: white';
+                document.getElementById("lightbox_content").appendChild(element);
+                document.getElementById('lightbox').style.display = 'inline';
+                document.getElementById('lightbox').style.zIndex = "999";
+            }
+        }
+    }
+    
+    class AudioContent extends Content {
+        constructor(name, fileLocation, encodingFormat) {
+            super(name, fileLocation, encodingFormat, false);
+        }
+
+        icon() { return "far fa-file-audio" };
+
+        linkToObject() {
+            const audioPlayer = document.createElement("audio");
+            audioPlayer.controls = true;
+            audioPlayer.src = `/data?hash=${this.fileLocation}`;
+            audioPlayer.style.zIndex = "-1";
+            return audioPlayer;
+        };
+
+        lightboxContent() { return null };
+    }
+
+    class ImageContent extends Content {
+        constructor(name, fileLocation, encodingFormat) {
+            super(name, fileLocation, encodingFormat, false);
+        }
+
+        icon() { return "far fa-file-image" };
+
+        lightboxContent() {
+            const image = document.createElement('img');
+            image.src = `/data?hash=${this.fileLocation}`;
+            return image;
+        };
+    }
+
+    class VideoContent extends Content {
+        constructor(name, fileLocation, encodingFormat) {
+            super(name, fileLocation, encodingFormat, false);
+        }
+
+        icon() { return "far fa-file-video" };
+
+        lightboxContent() {
+            const video = document.createElement('video');
+            video.setAttribute('controls', '');
+            const source = document.createElement("source");
+            source.src = `/data?hash=${this.fileLocation}`;
+            video.appendChild(source);
+
+            video.addEventListener('click', function (event) {
+                event.stopPropagation();
             });
-        } else {
-            parent.makeRESTRequest("/data?text=" + textQuery, function (responseText) {
-                var files = JSON.parse(responseText)["results"];
 
-                var query = "PREFIX schema: <http://schema.org/>\nDESCRIBE ?s WHERE { { ?s schema:alternateName ?o . VALUES ?o {";
-                for (var i = 0; i < files.length; i++) {
+            return video;
+        };
+    }
+
+    class CSVContent extends Content {
+        constructor(name, fileLocation, encodingFormat) {
+            super(name, fileLocation, encodingFormat, true);
+        }
+
+        icon() { return "fas fa-table" };
+
+        lightboxContent () {
+            //Have to create a div-within-a-div in order to set style because the outer div's style will get clobbered by the calling function
+            const outerContainerDiv = document.createElement('div');
+            const innerContainerDiv = document.createElement('div');
+            innerContainerDiv.style = 'max-width: 100%; max-height: 100%; overflow: auto';
+
+            outerContainerDiv.appendChild(innerContainerDiv);
+
+            const table = document.createElement("table");
+            table.className = "table table-bordered";
+
+            const thisRef = this;
+            const client = new XMLHttpRequest();
+
+            client.open('GET', `/data?hash=${this.fileLocation}`);
+
+            client.onload = () => {
+                table.innerHTML = thisRef.createTableRowsForCSVContent(client.response);
+            };
+
+            client.send();
+
+            innerContainerDiv.appendChild(table);
+            return outerContainerDiv;
+        };
+
+        createTableRowsForCSVContent(csvContent) {
+            const output = [];
+            let i, j;
+
+            const csvAsTwoDimensionalArray = this.csvToArray(csvContent);
+
+            for (i = 0; i < csvAsTwoDimensionalArray.length; i++) {
+                output.push("<tr>");
+                for (j = 0; j < csvAsTwoDimensionalArray[i].length; j++) {
+                    output.push("<td>" + csvAsTwoDimensionalArray[i][j] + "</td>");
+                }
+                output.push("</tr>");
+            }
+            return output.join("");
+        };
+
+        csvToArray(csvContent) {
+            let i, currentChar;
+            let currentlyWithinQuotes = true;
+            let previousChar = '';
+            let indexOfCurrentRow = 0;
+            let indexWithinCurrentRow = 0;
+            let currentRow = [''];
+            const result = [currentRow];
+
+            for (i = 0; i < csvContent.length; i++) {
+                currentChar = csvContent.charAt(i);
+                if (currentChar === '"') {
+                    if (currentlyWithinQuotes && previousChar === '"') currentRow[indexWithinCurrentRow] += '"';
+                    currentlyWithinQuotes = !currentlyWithinQuotes
+                } else if (currentlyWithinQuotes && currentChar === ',') {
+                    currentChar = currentRow[++indexWithinCurrentRow] = '';
+                } else if (currentlyWithinQuotes && currentChar === '\n') {
+                    if (previousChar === '\r') currentRow[indexWithinCurrentRow] = currentRow[indexWithinCurrentRow].slice(0, -1);
+
+                    currentChar = '';
+                    currentRow = result[++indexOfCurrentRow] = [''];
+                    indexWithinCurrentRow = 0;
+                } else currentRow[indexWithinCurrentRow] += currentChar;
+                previousChar = currentChar;
+            }
+            return result;
+        };
+    }
+
+    class PDFContent extends Content {
+        constructor(name, fileLocation, encodingFormat) {
+            super(name, fileLocation, encodingFormat, true);
+        }
+
+        icon() { return "far fa-file-pdf" };
+    }
+    // END CONTENT DATA TYPES
+
+    function loadMediaItemInfo() {
+        const textQuery = document.getElementById("searchText").value;
+
+        if (textQuery === "") {
+            runMediaQueryAndPopulateResults("PREFIX schema: <http://schema.org/>\nDESCRIBE ?s WHERE {?s schema:encodingFormat ?o }");
+        } else {
+            const client = new XMLHttpRequest();
+
+            client.open('GET', "/data?text=" + textQuery);
+
+            client.onload = () => {
+                const files = JSON.parse(client.response)["results"];
+
+                let query = "PREFIX schema: <http://schema.org/>\nDESCRIBE ?s WHERE { { ?s schema:alternateName ?o . VALUES ?o {";
+                for (let i = 0; i < files.length; i++) {
                     query += " \"" + files[i] + "\" ";
                 }
                 query += "} } UNION {?s schema:encodingFormat ?o . {?s ?a ?b} . FILTER regex(?b, \".*" + textQuery + ".*\", \"i\") } }";
+                runMediaQueryAndPopulateResults(query);
+            };
 
-                parent.makeRESTRequest("/data?query=" +  encodeURIComponent(query), function (responseText2) {
-                    populateMediaInfoTable(JSON.parse(responseText2));
-                });
-            });
+            client.send();
         }
+
+    }
+
+    function runMediaQueryAndPopulateResults(query) {
+        const client = new XMLHttpRequest();
+
+        client.open('GET', "/data?query=" +  encodeURIComponent(query));
+
+        client.onload = () => {
+            populateMediaInfoTable(JSON.parse(client.response));
+        };
+
+        client.send();
     }
 
     function populateMediaInfoTable(allMediaItems) {
-        var SCHEMA_ROOT = "http://schema.org/";
+        const SCHEMA_ROOT = "http://schema.org/";
 
-        var tbody = document.createElement('tbody');
+        const tbody = document.createElement('tbody');
 
-        for (var i = 0; i < allMediaItems.length; i++) {
-            var currentMediaItem = allMediaItems[i];
-            var encodingFormat = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "encodingFormat");
-            if (encodingFormat == null) continue;
+        allMediaItems.forEach(currentMediaItem => {
+            const encodingFormat = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "encodingFormat");
+            if (encodingFormat !== null) {
+                const fileLocation = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "alternateName");
+                const name = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "name");
 
-            var fileLocation = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "alternateName");
+                let contentObject = null;
+                switch (encodingFormat) {
+                    case 'audio/mp4':
+                        contentObject = new AudioContent(name, fileLocation, encodingFormat);
+                        break;
+                    case 'image/jpeg':
+                        contentObject = new ImageContent(name, fileLocation, encodingFormat);
+                        break;
+                    case 'video/mp4':
+                        contentObject = new VideoContent(name, fileLocation, encodingFormat);
+                        break;
+                    case 'text/csv':
+                        contentObject = new CSVContent(name, fileLocation, encodingFormat);
+                        break;
+                    case 'application/pdf':
+                        contentObject = new PDFContent(name, fileLocation, encodingFormat);
+                        break;
+                    default:
+                        contentObject = new Content(name, fileLocation, encodingFormat, true);
+                }
 
-            var tr = document.createElement('tr');
+                const tr = document.createElement('tr');
 
-            var name = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "name");
-            var descriptionTd = document.createElement('td');
-            if (name == null) {
-                descriptionTd.innerHTML = encodingFormat
-            } else {
-                descriptionTd.innerHTML = name;
+                const iconTd = document.createElement('td');
+                iconTd.style = 'vertical-align: middle; padding-right: 0'; //icon cell seems to have too much space on right without setting padding-right to 0...
+                const iconContainer = document.createElement('i');
+                iconContainer.className = contentObject.icon();
+                iconTd.appendChild(iconContainer);
+                tr.appendChild(iconTd);
+
+                const descriptionTd = document.createElement('td');
+                descriptionTd.innerHTML = contentObject.displayName();
+                descriptionTd.style = 'vertical-align: middle';
+                tr.appendChild(descriptionTd);
+                const contentTd = document.createElement('td');
+                contentTd.style = 'vertical-align: middle';
+                contentTd.appendChild(contentObject.linkToObject());
+                tr.appendChild(contentTd);
+                tbody.appendChild(tr);
             }
-            tr.appendChild(descriptionTd);
+        });
 
-            var contentTd = document.createElement('td');
-
-            if (encodingFormat == "audio/mp4") {
-                var audioPlayer = document.createElement("audio");
-                audioPlayer.controls = true;
-                audioPlayer.src = "/data?hash=" + fileLocation;
-                audioPlayer.style.zIndex = "-1";
-                contentTd.appendChild(audioPlayer);
-            } else {
-                var link = document.createElement('a');
-                link.href="#";
-                link.innerHTML = "{{view}}";
-
-                link.addEventListener('click', displayContentInLightbox(encodingFormat, fileLocation));
-                contentTd.appendChild(link);
-            }
-            tr.appendChild(contentTd);
-            tbody.appendChild(tr);
-        }
-
-        var oldChildNodes = document.getElementById("mediaItemsTable").childNodes;
-        for (var j = 0; j < oldChildNodes.length; j++) {
-            document.getElementById("mediaItemsTable").removeChild(oldChildNodes[j]);
-        }
+        removeChildNodesFromElement("mediaItemsTable");
 
         document.getElementById("mediaItemsTable").appendChild(tbody);
     }
 
-    function displayContentInLightbox(encodingFormat, fileLocation) {
-        return function(e) {
-            if (encodingFormat == "image/jpeg") {
-                var image = document.createElement('img');
-                image.src = "/data?hash=" + fileLocation;
-                showElementInLightbox(image);
-            } else if (encodingFormat == "video/mp4") {
-                var video = document.createElement('video');
-                video.setAttribute('controls', '');
-                var source = document.createElement("source");
-                source.src = "/data?hash=" + fileLocation;
-                video.appendChild(source);
-
-                video.addEventListener('click', function (event) {
-                    event.stopPropagation();
-                });
-
-                showElementInLightbox(video);
-            } else if (encodingFormat == "text/csv") {
-                parent.makeRESTRequest("/data?hash=" + fileLocation,
-                        function (responseText) {
-                            showElementInLightbox(createTableFromCSVContent(responseText));
-                        },
-                        function handleFailure() {
-                        });
-            } else {
-                var iframe = document.createElement('iframe');
-                iframe.src = "/data?hash=" + fileLocation;
-                showElementInLightbox(iframe);
-            }
-        };
-    }
-
-    function createTableFromCSVContent(csvContent) {
-        var lines = csvContent.split("\n");
-        var output = [];
-        var i;
-
-        for (i = 0; i < lines.length; i++)
-            output.push("<tr><td>"
-                    + lines[i].slice(0,-1).split(",").join("</td><td>")
-                    + "</td></tr>");
-
-        var table = document.createElement("table");
-        table.innerHTML = output.join("");
-        return table;
-    }
-
-    function showElementInLightbox(element) {
-        var oldChildNodes = document.getElementById("lightbox_content").childNodes;
-        for (var j = 0; j < oldChildNodes.length; j++) {
-            document.getElementById("lightbox_content").removeChild(oldChildNodes[j]);
-        }
-
-        element.style.width = "100%";
-        element.style.height = "100%";
-        document.getElementById("lightbox_content").appendChild(element);
-        document.getElementById('lightbox').style.display='inline';
+    function removeChildNodesFromElement(elementId) {
+        const element = document.getElementById(elementId);
+        const oldChildNodes = element.childNodes;
+        oldChildNodes.forEach(childNode => element.removeChild(childNode));
     }
 
     function uploadFile() {
-        var xhr = new XMLHttpRequest();
-        xhr.open("PUT", "/data", true);
+        const client = new XMLHttpRequest();
+        client.open("PUT", "/data", true);
 
-        xhr.upload.addEventListener("progress", function(e) {
-            var percentComplete = (100 - (e.loaded / e.total * 100));
+        client.upload.addEventListener("progress", function(e) {
+            const percentComplete = (100 - (e.loaded / e.total * 100));
             document.getElementById("uploadStatus").innerHTML = percentComplete + "%"
         }, false);
 
-        xhr.onreadystatechange = function(e) {
-            if (xhr.readyState == 4) {
-                if (xhr.status == 200) {
-                    document.getElementById("uploadStatus").innerHTML = "{{uploadSucceeded}}"
-                } else {
-                    document.getElementById("uploadStatus").innerHTML = "{{uploadFailed}}"
-                }
-                document.getElementById("uploadButton").disabled = true;
+        client.onload = () => {
+            if (client.status === 200) {
+                document.getElementById("uploadStatus").innerHTML = "{{uploadSucceeded}}"
+            } else {
+                document.getElementById("uploadStatus").innerHTML = "{{uploadFailed}}"
             }
+            document.getElementById("uploadButton").disabled = true;
         };
 
-        var formData = new FormData();
-        var file = document.getElementById("fileSelector").files[0];
+        const formData = new FormData();
+        const file = document.getElementById("fileSelector").files[0];
         formData.append(file.name, file);
-        xhr.send(formData);
+        client.send(formData);
     }
 
     function inputFileSelected() {
-        document.getElementById("uploadButton").disabled = false;
+        // In chrome sometimes this event fires even if the user cancels file selection, so we need to check that there is a file
+        document.getElementById("uploadButton").disabled = !document.getElementById("fileSelector").value;
         document.getElementById("uploadStatus").innerHTML = "";
+    }
+
+    function hideLightbox() {
+        document.getElementById('lightbox').style.display='none';
+        document.getElementById('lightbox').style.zIndex = '-999';
     }
 </script>
 
@@ -182,7 +353,7 @@
         z-index: 1;
     }
 
-    .lightbox_table {
+    .lightbox_surround {
         width: 100%;
         height: 100%;
         padding: 20px 0;
@@ -190,6 +361,11 @@
 
     #lightbox_content {
         margin: auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width:95%;
+        height:95%;
     }
 </style>
 
@@ -197,27 +373,46 @@
 
 <!-- LIGHTBOX CODE BEGIN -->
 
-<div id="lightbox" class="lightbox" style="display:none"
-     onclick="document.getElementById('lightbox').style.display='none';">
-    <div class="lightbox_table">
-        <div id="lightbox_content" style="width:90%; height:90%; background-color:white; border:5px solid black;">
+<div id="lightbox" class="lightbox" style="display:none" onclick="hideLightbox()">
+    <div class="lightbox_surround">
+        <div id="lightbox_content">
         </div>
     </div>
 </div>
 
 <!-- LIGHTBOX CODE END -->
 
-<input id="fileSelector" type="file" onchange="inputFileSelected()" />
-<button id="uploadButton" type="button" onclick="uploadFile()" disabled>{{upload}}</button><br />
-<span id="uploadStatus"></span><br />
+<div class="container-fluid" style="padding: 5px">
+    <div class="row">
+        <div class="col-sm-8">
+            <div class="input-group">
+                <div class="custom-file">
+                    <input id="fileSelector" type="file" class="form-control-file" onchange="inputFileSelected()" />
+                </div>
+                <div class="input-group-append">
+                    <button id="uploadButton" type="button" class="btn btn-primary btn-sm" onclick="uploadFile()" disabled>{{upload}}</button>
+                </div>
 
-<span>
-    <input id="searchText" onkeydown="if (event.keyCode == 13) loadMediaItemInfo()"/>
-    <button type="button" onclick="loadMediaItemInfo()">{{search}}</button><br />
-</span>
+            </div>
+        </div>
+        <div class="col-sm-4 my-auto">
+            <span id="uploadStatus"></span>
+        </div>
+    </div>
 
-<div id="mediaItems">
-    <table id="mediaItemsTable"></table>
+    <div class="row">
+        <div class="col-12">
+            <input class="form-control-sm" id="searchText" onkeydown="if (event.keyCode === 13) loadMediaItemInfo()"/>
+            <button type="button" class="btn btn-primary btn-sm" onclick="loadMediaItemInfo()">{{search}}</button>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-12">
+            <table id="mediaItemsTable" class="table table-striped"></table>
+        </div>
+    </div>
 </div>
+
 </body>
 </html>

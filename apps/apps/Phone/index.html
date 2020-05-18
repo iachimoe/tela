@@ -1,5 +1,8 @@
 <!DOCTYPE html>
 <html>
+
+<link href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css" rel="stylesheet">
+
 <script>
     function videoCallSupport() {
         return RTCPeerConnection && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
@@ -27,7 +30,7 @@
 
     // BEGIN WEBSOCKET
 
-    var connection = null;
+    let connection = null;
 
     function establishConnection() {
         if (!videoCallSupport()) {
@@ -39,10 +42,10 @@
         connection = new WebSocket('ws://' + window.location.host + '/events');
 
         connection.onmessage = function (e) {
-            var message = JSON.parse(e.data);
+            const message = JSON.parse(e.data);
             if (message["action"] === "callSignalReceived") {
-                var user = message["data"]["user"];
-                var data = message["data"]["data"];
+                const user = message["data"]["user"];
+                const data = message["data"]["data"];
 
                 if (data.hasOwnProperty("candidate")) {
                     addCandidate(data);
@@ -58,7 +61,7 @@
     }
 
     function sendMessage(msg, recipient) {
-        var json = {"action": "sendCallSignal", "data": {"user": recipient, "data": msg}};
+        const json = {"action": "sendCallSignal", "data": {"user": recipient, "data": msg}};
         connection.send(JSON.stringify(json));
     }
 
@@ -66,8 +69,8 @@
 
     // BEGIN WEBRTC
 
-    var peerConnection = initialisePeerConnection();
-    var initiatedConnection = false;
+    let peerConnection = initialisePeerConnection();
+    let initiatedConnection = false;
 
     function error() {
         handleEndOfCall();
@@ -104,7 +107,7 @@
     function startCall(user) {
         return navigator.mediaDevices.getUserMedia(getAudioVideoStatus()).then(stream => {
             peerConnection.oniceconnectionstatechange = function () {
-                if (peerConnection.iceConnectionState == 'disconnected' || peerConnection.iceConnectionState == 'closed') {
+                if (peerConnection.iceConnectionState === "disconnected" || peerConnection.iceConnectionState === "closed") {
                     stopTracks(stream);
                     handleEndOfCall();
                 }
@@ -169,14 +172,14 @@
         document.getElementById("endCallButton").style.visibility = "visible";
 
         if (!isAudioOnly()) {
-            showVideoElements();
+            document.getElementById("videoContainer").style.visibility = "visible";
             playVideo("remoteVideo", stream);
             playVideo("localVideo", localStream);
         }
     }
 
     function playVideo(elementName, stream) {
-        var video = document.getElementById(elementName);
+        const video = document.getElementById(elementName);
         video.srcObject = stream;
         video.play();
     }
@@ -187,59 +190,56 @@
         peerConnection = initialisePeerConnection();
         initiatedConnection = false;
     }
-
-    function showVideoElements() {
-        //TODO Don't hardcode these dimensions
-        if (parent.fullSizedScreen()) {
-            setDimensionsOfRemoteVideo(640, 480);
-
-        } else {
-            setDimensionsOfRemoteVideo(285, 285);
-        }
-        document.getElementById("videoContainer").style.visibility = "visible";
-    }
-
-    function setDimensionsOfRemoteVideo(width, height) {
-        var videoContainer = document.getElementById("videoContainer");
-        videoContainer.style.width = width + "px";
-        videoContainer.style.height = height + "px";
-
-        var video = document.getElementById("remoteVideo");
-        video.style.width = width + "px";
-        video.style.height = height + "px";
-    }
 </script>
 
 <style>
     #remoteVideo {
-        top:0;
-        right:0;
-        position:relative;
+        width: 640px;
+        height: 480px;
+        top: 0;
+        right: 0;
     }
 
     #localVideo {
-        width:100px;
-        height:100px;
-        z-index:999;
-        position:absolute;
-        bottom:0;
-        right:0;
+        width: 100px;
+        height: 100px;
+        z-index: 999;
+        position: absolute;
+        bottom: 0;
+        right: 0;
     }
 
     #videoContainer {
-        position:relative
+        width: 640px;
+        height: 480px;
+        margin: auto;
+        position: relative;
+    }
+
+    @media screen and (max-width: 768px) {
+        #remoteVideo {
+            width: 285px;
+            height: 285px;
+        }
+
+        #videoContainer {
+            width: 285px;
+            height: 285px;
+        }
     }
 </style>
 <body ondrop="drop(event)" ondragover="allowDrop(event)" onload="establishConnection()">
-<div id="errorMessage" style="display:none">{{unsupportedBrowserError}}</div>
-<div id="controlPanel">
-    <input type="checkbox" id="audioOnly"/><label for="audioOnly">{{audioOnly}}</label>
-    <button id="endCallButton" style="visibility:hidden" onclick="endCall()">{{hangUp}}</button>
-</div>
+<div class="container-fluid" style="padding: 5px">
+    <div id="errorMessage" style="display:none">{{unsupportedBrowserError}}</div>
+    <div id="controlPanel">
+        <input type="checkbox" id="audioOnly"/> <label for="audioOnly">{{audioOnly}}</label>
+        <button id="endCallButton" class="btn btn-danger" style="visibility:hidden" onclick="endCall()">{{hangUp}}</button>
+    </div>
 
-<div id="videoContainer" style="visibility:hidden">
-    <video id="remoteVideo"></video>
-    <video id="localVideo" muted></video>
+    <div id="videoContainer" style="visibility:hidden">
+        <video id="remoteVideo"></video>
+        <video id="localVideo" muted></video>
+    </div>
 </div>
 </body>
 </html>

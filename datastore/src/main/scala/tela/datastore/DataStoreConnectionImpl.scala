@@ -165,6 +165,7 @@ class DataStoreConnectionImpl(root: Path, user: String,
   }
 
   override def textSearch(textToFind: String): Vector[String] = {
+    //TODO consider using SearcherManager (which can be refreshed via a scheduled akka message) instead of this non-threadsafe process...
     val newReader = DirectoryReader.openIfChanged(luceneIndexReader)
     if (newReader != null) {
       luceneIndexReader.close() //TODO There is no unit test to ensure that the old reader gets closed
@@ -204,6 +205,7 @@ class DataStoreConnectionImpl(root: Path, user: String,
   }
 
   private def addTextContentToLuceneIndex(filename: String, content: String): Unit = {
+    //TODO Maybe we should just store this in rdf4j rather than maintaining a separate Lucene index?
     val document = new Document()
     document.add(new StringField(LuceneFileNameField, filename, Store.YES))
     document.add(new TextField(LuceneFileContentField, content, Store.NO))

@@ -1,40 +1,62 @@
 <!DOCTYPE html>
 <html>
-<script>
-    var SCHEMA_ROOT = "http://schema.org/";
 
-    var PROFILE_URN = "urn:tela:personalDetails";
-    var NAME = SCHEMA_ROOT + "name";
-    var JOB_TITLE = SCHEMA_ROOT + "jobTitle";
-    var EMAIL = SCHEMA_ROOT + "email";
-    var TELEPHONE = SCHEMA_ROOT + "telephone";
-    var DESCRIPTION = SCHEMA_ROOT + "description";
+<link href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css" rel="stylesheet">
+
+<style>
+    .profile-field {
+        width: 100%
+    }
+
+    body {
+        overflow-x: hidden;
+    }
+</style>
+
+<script>
+    const SCHEMA_ROOT = "http://schema.org/";
+
+    const PROFILE_URN = "urn:tela:personalDetails";
+    const NAME = SCHEMA_ROOT + "name";
+    const JOB_TITLE = SCHEMA_ROOT + "jobTitle";
+    const EMAIL = SCHEMA_ROOT + "email";
+    const TELEPHONE = SCHEMA_ROOT + "telephone";
+    const DESCRIPTION = SCHEMA_ROOT + "description";
 
     function updateProfile() {
-        var values = {};
+        const values = {};
         values[NAME] = document.getElementById("name").value;
         values[JOB_TITLE] = document.getElementById("jobTitle").value;
         values[EMAIL] = document.getElementById("email").value;
         values[TELEPHONE] = document.getElementById("telephone").value;
         values[DESCRIPTION] = document.getElementById("description").value;
 
-        var json = parent.createJsonLdObjectAsString(PROFILE_URN, SCHEMA_ROOT + "Person", values);
+        const json = parent.createJsonLdObjectAsString(PROFILE_URN, SCHEMA_ROOT + "Person", values);
 
-        parent.makeRESTRequestWithData("/data?uriToPublish=" + encodeURIComponent(PROFILE_URN), "application/ld+json", json);
+        const client = new XMLHttpRequest();
+
+        client.open("PUT", "/data?uriToPublish=" + encodeURIComponent(PROFILE_URN));
+        client.setRequestHeader("Content-Type", "application/ld+json");
+
+        client.send(json);
     }
 
     function downloadOwnProfile() {
-        parent.makeRESTRequest("/data?uri=" + encodeURIComponent("urn:tela:personalDetails"), function (responseText) {
-            populateUserInfo(JSON.parse(responseText)[0]);
-        });
+        const client = new XMLHttpRequest();
+
+        client.open('GET', "/data?uri=" + encodeURIComponent("urn:tela:personalDetails"));
+
+        client.onload = () => {
+            populateUserInfo(JSON.parse(client.response)[0]);
+        };
+
+        client.send();
     }
 
     function populateUserInfo(info) {
-        var fields = ["name", "jobTitle", "email", "telephone", "description"];
+        const fields = ["name", "jobTitle", "email", "telephone", "description"];
 
-        for (var i = 0; i < fields.length; i++) {
-            populateField(fields[i], info);
-        }
+        fields.forEach(field => populateField(field, info));
     }
 
     function populateField(field, data) {
@@ -44,11 +66,20 @@
     }
 </script>
 <body onload="downloadOwnProfile()">
-<label for="name">{{nameLabel}}</label><input id="name"/><br/>
-<label for="jobTitle">{{jobTitleLabel}}</label><input id="jobTitle"/><br/>
-<label for="email">{{emailLabel}}</label><input id="email"/><br/>
-<label for="telephone">{{telephoneLabel}}</label><input id="telephone"/><br/>
-<label for="description">{{descriptionLabel}}</label><input id="description"/><br/>
-<button onclick="updateProfile()">{{updateProfile}}</button>
+<div class="container-fluid" style="padding: 3px">
+    <dl class="row">
+        <dt class="col-3">{{nameLabel}}</dt>
+        <dd class="col-9"><input id="name" class="form-control form-control-sm profile-field"/></dd>
+        <dt class="col-3">{{jobTitleLabel}}</dt>
+        <dd class="col-9"><input id="jobTitle" class="form-control form-control-sm profile-field"/></dd>
+        <dt class="col-3">{{emailLabel}}</dt>
+        <dd class="col-9"><input id="email" class="form-control form-control-sm profile-field"/></dd>
+        <dt class="col-3">{{telephoneLabel}}</dt>
+        <dd class="col-9"><input id="telephone" class="form-control form-control-sm profile-field"/></dd>
+        <dt class="col-3">{{descriptionLabel}}</dt>
+        <dd class="col-9"><input id="description" class="form-control form-control-sm profile-field"/></dd>
+    </dl>
+    <button onclick="updateProfile()" class="btn btn-primary btn-sm btn-block profile-field">{{updateProfile}}</button>
+</div>
 </body>
 </html>

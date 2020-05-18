@@ -1,80 +1,140 @@
 <!DOCTYPE html>
 <html>
+
+<link href="/webjars/bootstrap/4.5.0/css/bootstrap.min.css" rel="stylesheet">
+<link href="/webjars/font-awesome/5.13.0/css/all.min.css" rel="stylesheet">
+
 <style>
     html, body {
         height: 100%;
     }
 
-    .localMessage, .remoteMessage {
-        max-width: 80%;
-        clear: both;
-        border-radius: 10px;
-        border: 1px solid black;
-        margin: 5px;
-        padding: 2px;
+    /* messages */
+    .messageText {
+        width: 100%;
+        word-break: break-all;
     }
 
     .localMessage {
         float: right;
+        background: whitesmoke;
+
+        margin-top: 5px;
+        width: 90%;
+        border-radius: 5px;
+        padding: 5px;
+        display: flex;
     }
 
     .remoteMessage {
         float: left;
+        background: whitesmoke;
+
+        margin-top: 5px;
+        width: 90%;
+        border-radius: 5px;
+        padding: 5px;
+        display: flex;
     }
 
-    .conversationTab {
-        padding: 4px;
-        float: right;
-        border: 1px solid black;
-        border-top: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
+    /* arrows */
+    .localMessage:after {
+        width: 0;
+        height: 0;
+        content: "";
+        top: -5px;
+        left: 14px;
+        position: relative;
+        border-style: solid;
+        border-width: 13px 13px 0 0;
+        border-color: whitesmoke transparent transparent transparent;
+    }
+
+    .remoteMessage:before {
+        width: 0;
+        height: 0;
+        content: "";
+        top: -5px;
+        left: -14px;
+        position: relative;
+        border-style: solid;
+        border-width: 0 13px 13px 0;
+        border-color: transparent whitesmoke transparent transparent;
+    }
+    /* end messages */
+
+    /* container of messages */
+    .userLabel {
+        flex-grow: 0;
     }
 
     .content {
-        height: 80%;
-        overflow-y: auto
+        width: 100%;
+        padding-left: 18px;
+        padding-right: 18px;
+        margin: 0 0 2px;
+        list-style-type: none;
+        display: inline-block;
+        flex-grow: 1;
+        overflow-y: auto;
     }
 
     .inputPanel {
-        border-top: 1px solid black;
+        flex-grow: 0;
     }
 
+    .chat {
+        display: none;
+        flex-flow: column;
+        height: 100%;
+    }
+    /* end container of messages */
+
+    /* text input */
     .scribe {
         height: 60px;
         overflow: auto;
         box-sizing: border-box;
         margin-top: 10px;
         margin-left: 5px;
+        margin-bottom: 3px;
         border: 1px solid black;
     }
 
-    .controlButton {
-        margin-top: 5px;
-    }
-
     .chatControlButtonContainer {
+        margin-top: 10px;
+        margin-left: 3px;
         float: right;
     }
 
     .formattingButton {
-        margin-left: 3px;
+        margin-left: 5px;
+        margin-bottom: 0;
     }
 
-    .formattingButton.active {
-        border-style: inset;
+    /* end text input */
+
+    /* tabs */
+    .switchChat, .switchChat:link, .switchChat:hover {
+        color: inherit;
+        text-decoration: inherit;
     }
 
-    .chat {
-        height: 100%;
-        overflow: hidden;
-        display: none
+    .closeButton {
+        border-style: none;
+        padding: 4px;
     }
+
+    #tabs {
+        width: 95%;
+    }
+    /* end tabs */
 
     #chatPane {
         width: 95%;
         height: 90%;
         border: 1px solid black;
+        padding: 5px;
     }
 </style>
 
@@ -83,13 +143,13 @@
 <script>
     // BEGIN WEBSOCKET
 
-    var connection = null;
+    let connection = null;
 
     function establishConnection() {
         connection = new WebSocket('ws://' + window.location.host + '/events');
 
         connection.onmessage = function (e) {
-            var message = JSON.parse(e.data);
+            const message = JSON.parse(e.data);
             if (message["action"] === "chatMessageReceived") {
                 handleIncomingMessage(message["data"]["user"], message["data"]["message"]);
             }
@@ -97,7 +157,7 @@
     }
 
     function sendMessageToUser(data, recipient) {
-        var json = {"action": "sendChatMessage", "data": {"user": recipient, "message": data}};
+        const json = {"action": "sendChatMessage", "data": {"user": recipient, "message": data}};
         connection.send(JSON.stringify(json));
     }
 
@@ -117,32 +177,38 @@
 
     // BEGIN UI
 
-    var Scribe = null;
-    var scribePluginToolbar = null;
+    let Scribe = null;
+    let scribePluginToolbar = null;
 
     require({
-                paths: {
-                    'scribe': '/webjars/scribe/3.2.0/scribe',
-                    'scribe-plugin-toolbar': '/webjars/scribe-plugin-toolbar/1.0.0/scribe-plugin-toolbar'
-                }
-            }, ['scribe', 'scribe-plugin-toolbar'],
-            function (localScribe, localScribePluginToolbar) {
-                Scribe = localScribe;
-                scribePluginToolbar = localScribePluginToolbar;
-            });
+            paths: {
+                'scribe': '/webjars/scribe/3.2.0/scribe',
+                'scribe-plugin-toolbar': '/webjars/scribe-plugin-toolbar/1.0.0/scribe-plugin-toolbar'
+            }
+        }, ['scribe', 'scribe-plugin-toolbar'],
+        function (localScribe, localScribePluginToolbar) {
+            Scribe = localScribe;
+            scribePluginToolbar = localScribePluginToolbar;
+        });
 
     function addTextToChatPanel(user, text, className) {
-        var message = createElementWithClass("div", className);
+        const listItem = document.createElement("li");
+
+        const messageContainer = createElementWithClass("div", className);
+        const message = createElementWithClass("div", "messageText");
         message.innerHTML = text;
 
-        var chatContent = getChatPanelForUser(user).querySelector(".content");
-        chatContent.appendChild(message);
+        messageContainer.appendChild(message);
+        listItem.appendChild(messageContainer);
+
+        const chatContent = getChatPanelForUser(user).querySelector(".content");
+        chatContent.appendChild(listItem);
         chatContent.scrollTop = chatContent.scrollHeight;
     }
 
     function sendMessage(user) {
-        if (getScribeForUser(user).getTextContent() != "") {
-            var message = getScribeForUser(user).getHTML();
+        if (getScribeForUser(user).getTextContent() !== "") {
+            const message = getScribeForUser(user).getHTML();
             getScribeForUser(user).setHTML("");
             addTextToChatPanel(user, message, "localMessage");
             sendMessageToUser(message, user);
@@ -150,39 +216,34 @@
     }
 
     function createChatPanel(user) {
-        var container = createElementWithClass("div", "chat");
-        var content = createElementWithClass("div", "content");
+        const container = createElementWithClass("div", "chat");
+
+        const userLabel = createElementWithClass("div", "userLabel");
+        userLabel.innerHTML = user;
+        container.appendChild(userLabel);
+
+        const content = createElementWithClass("ul", "content");
         container.appendChild(content);
 
-        var userLabel = document.createElement("div");
-        userLabel.innerHTML = user;
-        content.appendChild(userLabel);
-
-        var inputPanel = createElementWithClass("div", "inputPanel");
-        var toolbar = createElementWithClass("div", "toolbar");
-        var boldButton = createFormattingButton("bold", "{{bold}}");
-        var italicButton = createFormattingButton("italic", "{{italic}}");
+        const inputPanel = createElementWithClass("div", "inputPanel");
+        const toolbar = createElementWithClass("div", "toolbar");
+        const boldButton = createFormattingButton("bold", "fa-bold");
+        const italicButton = createFormattingButton("italic", "fa-italic");
         toolbar.appendChild(boldButton);
         toolbar.appendChild(italicButton);
 
-        var scribeElement = createElementWithClass("div", "scribe");
+        const scribeElement = createElementWithClass("div", "scribe");
 
-        var enterButton = createElementWithClass("button", "controlButton");
-        enterButton.innerHTML = "{{enter}}";
+        const enterButton = createElementWithClass("label", "btn btn-primary sendButton");
+        const enterButtonIcon = createElementWithClass("i", "fas fa-paper-plane");
+        enterButton.appendChild(enterButtonIcon);
         enterButton.onclick = function () {
             sendMessage(user);
         };
 
-        var closeButton = createElementWithClass("button", "controlButton");
-        closeButton.innerHTML = "{{close}}";
-        closeButton.onclick = function () {
-            closeChat(user);
-        };
-
-        var chatControlButtonContainer = createElementWithClass("div", "chatControlButtonContainer");
+        const chatControlButtonContainer = createElementWithClass("div", "chatControlButtonContainer");
         chatControlButtonContainer.appendChild(enterButton);
         chatControlButtonContainer.appendChild(document.createElement("br"));
-        chatControlButtonContainer.appendChild(closeButton);
 
         inputPanel.appendChild(toolbar);
         inputPanel.appendChild(chatControlButtonContainer);
@@ -192,21 +253,48 @@
         return container;
     }
 
-    function createFormattingButton(type, text) {
-        var button = createElementWithClass("button", "formattingButton");
+    function createChatTab(user) {
+        const tab = document.createElement("li");
+
+        const anchor = createElementWithClass("a", "switchChat");
+        const closeButton = createElementWithClass("label", "btn btn-sm btn-outline-secondary closeButton");
+        const closeButtonIcon = createElementWithClass("i", "fas fa-window-close");
+        closeButton.appendChild(closeButtonIcon);
+        closeButton.onclick = function () {
+            closeChat(user);
+        };
+
+        const textNode = document.createTextNode(user);
+
+        anchor.href = "#" + user;
+        anchor.appendChild(textNode);
+        anchor.appendChild(closeButton);
+
+        tab.appendChild(anchor);
+        tab.onmouseup = function () {
+            switchToChat(user);
+        };
+        return tab;
+    }
+
+    function createFormattingButton(type, fontAwesomeIcon) {
+        const button = createElementWithClass("label", "btn btn-primary formattingButton");
         button.setAttribute("data-command-name", type);
-        button.innerHTML = text;
+
+        const thisIcon = createElementWithClass("i", "fas " + fontAwesomeIcon);
+        button.appendChild(thisIcon);
+
         return button;
     }
 
     function createElementWithClass(tagName, className) {
-        var div = document.createElement(tagName);
+        const div = document.createElement(tagName);
         div.className = className;
         return div;
     }
 
-    var foregroundChatUsername = null;
-    var chats = {};
+    let foregroundChatUsername = null;
+    const chats = {};
 
     function closeChat(user) {
         document.getElementById("chatPane").removeChild(getChatPanelForUser(user));
@@ -214,9 +302,9 @@
 
         delete chats[user];
 
-        if (foregroundChatUsername == user) {
+        if (foregroundChatUsername === user) {
             foregroundChatUsername = null;
-            var remainingChats = Object.keys(chats);
+            const remainingChats = Object.keys(chats);
             if (remainingChats.length > 0) {
                 switchToChat(remainingChats[0]);
             }
@@ -224,24 +312,17 @@
     }
 
     function createNewChat(user) {
-        var container = createChatPanel(user);
+        const container = createChatPanel(user);
 
-        var s = new Scribe(container.querySelector(".scribe"), {allowBlockElements: true});
-        s.use(scribePluginToolbar(container.querySelector(".toolbar")));
+        const scribe = new Scribe(container.querySelector(".scribe"), {allowBlockElements: true});
+        scribe.use(scribePluginToolbar(container.querySelector(".toolbar")));
 
-        var tab = createElementWithClass("span", "conversationTab");
-        tab.innerHTML = user;
-        tab.onmouseup = function () {
-            switchToChat(user);
-        };
-        if (!parent.fullSizedScreen()) {
-            tab.style.maxWidth = "25%";
-        }
+        const tab = createChatTab(user);
 
         document.getElementById("chatPane").appendChild(container);
         document.getElementById("tabs").appendChild(tab);
 
-        addChatToList(user, s, container, tab);
+        addChatToList(user, scribe, container, tab);
 
         if (foregroundChatUsername == null) {
             switchToChat(user);
@@ -253,8 +334,8 @@
             getChatPanelForUser(foregroundChatUsername).style.display = "none";
         }
 
-        getChatPanelForUser(user).style.display = "block";
-        getChatTabForUser(user).style.background = "transparent";
+        getChatPanelForUser(user).style.display = "flex";
+        getChatTabForUser(user).classList.remove("list-group-item-info");
         foregroundChatUsername = user;
     }
 
@@ -264,8 +345,8 @@
         }
         addTextToChatPanel(user, message, "remoteMessage");
 
-        if (foregroundChatUsername != user) {
-            getChatTabForUser(user).style.background = "deepskyblue";
+        if (foregroundChatUsername !== user) {
+            getChatTabForUser(user).classList.add("list-group-item-info");
         }
     }
 
@@ -277,7 +358,7 @@
     }
 
     function chatWithUserExists(user) {
-        return chats[user] != null
+        return chats[user] != null;
     }
 
     function getScribeForUser(user) {
@@ -302,9 +383,7 @@
 </script>
 
 <body ondrop="drop(event)" ondragover="allowDrop(event)" onload="establishConnection()">
-<div id="chatPane">
-</div>
-<div id="tabs" style="width:95%">
-</div>
+<div id="chatPane"></div>
+<ul id="tabs" class="nav nav-tabs justify-content-end"></ul>
 </body>
 </html>
