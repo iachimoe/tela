@@ -3,10 +3,10 @@ package tela.datastore
 import java.net.URI
 import java.nio.file.{Files, Path, Paths, StandardCopyOption}
 import java.util.UUID
-
 import org.apache.lucene.store.AlreadyClosedException
 import org.eclipse.rdf4j.model.impl.{LinkedHashModel, SimpleValueFactory}
-import org.eclipse.rdf4j.model.vocabulary.{GEO, GEOF, XMLSchema}
+import org.eclipse.rdf4j.model.util.Models
+import org.eclipse.rdf4j.model.vocabulary.{GEO, GEOF, XSD}
 import org.eclipse.rdf4j.rio.RDFFormat
 import org.mockito.ArgumentMatchers._
 import org.mockito.Mockito._
@@ -196,14 +196,6 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
     connection.connection.isOpen should === (false)
     connection.repository.isInitialized should === (false)
     connection.luceneIndexReader.getRefCount should === (0)
-
-    var writerClosed = false
-    try {
-      connection.luceneIndexWriter.numDocs()
-    } catch {
-      case _: AlreadyClosedException => writerClosed = true
-    }
-    writerClosed should === (true)
   }
 
   "getDataStore" should "throw an IllegalArgumentException for a non-existent data store" in testEnvironment { environment =>
@@ -339,7 +331,7 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
       "prefix geo: <" + GEO.NAMESPACE + ">" +
         "prefix geof: <" + GEOF.NAMESPACE + ">" +
         "prefix uom: <" + GEOF.UOM_NAMESPACE + ">" +
-        "prefix xsd: <" + XMLSchema.NAMESPACE + ">" +
+        "prefix xsd: <" + XSD.NAMESPACE + ">" +
         "DESCRIBE ?subject where { ?subject geo:asWKT ?object . filter(geof:distance(\"POINT (2.2950 48.8738)\"^^geo:wktLiteral, ?object, uom:metre) < \"500.0\"^^xsd:double) }"
 
     val result: String = environment.connection.runSPARQLQuery(placesNearArcDeTriompheQuery)
@@ -374,7 +366,7 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   }
 
   private def assertJSONGraphsAreEqual(expected: String, actual: String): Unit = {
-    getJSONAsRDFModel(actual) should === (getJSONAsRDFModel(expected))
+    Models.isomorphic(getJSONAsRDFModel(actual), getJSONAsRDFModel(expected)) should === (true)
   }
 
   private def getJSONAsRDFModel(json: String): LinkedHashModel = {

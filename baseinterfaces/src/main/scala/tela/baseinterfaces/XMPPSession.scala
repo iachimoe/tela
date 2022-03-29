@@ -40,6 +40,8 @@ trait XMPPSessionListener {
 
   def presenceChanged(contact: ContactInfo): Unit
 
+  def selfPresenceChanged(presence: Presence): Unit
+
   def callSignalReceived(user: String, data: String): Unit
 
   def chatMessageReceived(user: String, message: String): Unit

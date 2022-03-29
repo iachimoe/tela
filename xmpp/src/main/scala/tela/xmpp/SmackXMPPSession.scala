@@ -1,33 +1,33 @@
 package tela.xmpp
 
 import java.net.URI
-
 import com.typesafe.scalalogging.Logger
 import org.jivesoftware.smack.SmackException.ConnectionException
 import org.jivesoftware.smack.XMPPException.XMPPErrorException
-import org.jivesoftware.smack._
+import org.jivesoftware.smack.{packet, _}
 import org.jivesoftware.smack.chat2.{Chat, ChatManager, IncomingChatMessageListener}
 import org.jivesoftware.smack.iqrequest.IQRequestHandler
 import org.jivesoftware.smack.packet.IQ.{IQChildElementXmlStringBuilder, Type}
 import org.jivesoftware.smack.packet.Presence.Mode
 import org.jivesoftware.smack.packet._
 import org.jivesoftware.smack.provider.{IQProvider, ProviderManager}
-import org.jivesoftware.smack.roster.Roster.SubscriptionMode
-import org.jivesoftware.smack.roster.{Roster, RosterListener}
+import org.jivesoftware.smack.roster.SubscribeListener.SubscribeAnswer
+import org.jivesoftware.smack.roster.{Roster, RosterListener, SubscribeListener}
 import org.jivesoftware.smack.sasl.SASLErrorException
 import org.jivesoftware.smack.tcp.{XMPPTCPConnection, XMPPTCPConnectionConfiguration}
+import org.jivesoftware.smack.xml.XmlPullParser
 import org.jivesoftware.smackx.iqregister.AccountManager
 import org.jivesoftware.smackx.pubsub.PubSubException.NotAPubSubNodeException
 import org.jivesoftware.smackx.pubsub._
+import org.jivesoftware.smackx.pubsub.form.ConfigureForm
 import org.jivesoftware.smackx.xdata.packet.DataForm
 import org.jxmpp.jid.impl.JidCreate
 import org.jxmpp.jid.parts.Resourcepart
 import org.jxmpp.jid.{EntityBareJid, Jid}
 import org.jxmpp.util.XmppStringUtils
 import org.slf4j.LoggerFactory
-import org.xmlpull.v1.XmlPullParser
 import tela.baseinterfaces
-import tela.baseinterfaces._
+import tela.baseinterfaces.{Presence, _}
 import tela.xmpp.SmackXMPPSession._
 
 import scala.jdk.CollectionConverters._
@@ -57,7 +57,7 @@ object SmackXMPPSession {
     connectToServer(username, password, DefaultResourceName, connection, xmppSettings, sessionListener)
   }
 
-  private[xmpp] def connectToServer(username: String, password: String, resource: String, connection: AbstractXMPPConnection, xmppSettings: XMPPSettings, sessionListener: XMPPSessionListener): Either[LoginFailure, XMPPSession] = {
+  private def connectToServer(username: String, password: String, resource: String, connection: AbstractXMPPConnection, xmppSettings: XMPPSettings, sessionListener: XMPPSessionListener): Either[LoginFailure, XMPPSession] = {
     try {
       log.debug("Connecting to server for user {}", username)
       connection.connect()
@@ -74,8 +74,9 @@ object SmackXMPPSession {
       connection.login(username, password, Resourcepart.from(resource))
       val session: SmackXMPPSession = new SmackXMPPSession(connection, sessionListener, xmppSettings)
 
-      Roster.getInstanceFor(connection).setSubscriptionMode(SubscriptionMode.accept_all)
-      Roster.getInstanceFor(connection).addRosterListener(new ContactListChangeListener(session))
+      val roster = Roster.getInstanceFor(connection)
+      roster.addRosterListener(new ContactListChangeListener(session))
+      roster.addSubscribeListener(new PresenceSubscriptionHandler(session))
       ChatManager.getInstanceFor(connection).addIncomingListener(new TelaChatManagerListener(session))
       connection.registerIQRequestHandler(new CallSignalRequestHandler(session))
       Right(session)
@@ -101,6 +102,11 @@ object SmackXMPPSession {
         case invalidMode => throw new IllegalArgumentException(s"Invalid security mode $invalidMode")
       }).build()
     new XMPPTCPConnection(config)
+  }
+
+  private class PresenceSubscriptionHandler(private val xmppSession: SmackXMPPSession) extends SubscribeListener {
+    override def processSubscribe(from: Jid, subscribeRequest: packet.Presence): SubscribeAnswer =
+      SubscribeAnswer.ApproveAndAlsoRequestIfRequired
   }
 
   private class ContactListChangeListener(private val xmppSession: SmackXMPPSession) extends RosterListener {
@@ -156,7 +162,7 @@ object SmackXMPPSession {
   }
 
   private[xmpp] class CallSignalProvider extends IQProvider[CallSignal] {
-    override def parse(parser: XmlPullParser, initialDepth: Int): CallSignal = {
+    override def parse(parser: XmlPullParser, initialDepth: Int, xmlEnvironment: XmlEnvironment): CallSignal = {
       parser.next()
       new CallSignal(parser.getText)
     }
@@ -172,8 +178,7 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
   override def setPresence(presence: tela.baseinterfaces.Presence): Unit = {
     log.info("User {} setting presence to {}", connection.getUser, presence)
     getXMPPPresenceFromTelaPresence(presence).foreach(presence => {
-      import org.jivesoftware.smack.packet.Presence
-      connection.sendStanza(new Presence(Presence.Type.available, DefaultStatusText, DefaultPriority, presence))
+      connection.sendStanza(connection.getStanzaFactory.buildPresenceStanza().setMode(presence).setStatus(DefaultStatusText).setPriority(DefaultPriority).build())
     })
   }
 
@@ -183,19 +188,20 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
 
   override def getContactList(): Unit = {
     log.info("Retrieving contact list for user {}", connection.getUser)
-    sessionListener.contactsAdded(Roster.getInstanceFor(connection).getEntries.asScala.map(
-      entry => ContactInfo(entry.getJid.asUnescapedString(), getTelaPresenceFromXMPPPresence(Roster.getInstanceFor(connection).getPresence(entry.getJid)))).toArray.toVector)
+    sessionListener.contactsAdded(Roster.getInstanceFor(connection).getEntries.asScala.toVector.map(
+      entry => ContactInfo(entry.getJid.asUnescapedString(), getTelaPresenceFromXMPPPresence(Roster.getInstanceFor(connection).getPresence(entry.getJid)))))
+    sessionListener.selfPresenceChanged(getTelaPresenceFromXMPPPresence(Roster.getInstanceFor(connection).getPresence(connection.getUser.asBareJid())))
   }
 
   override def addContact(address: String): Unit = {
     log.info("User {} adding contact {}", connection.getUser, address)
-    Roster.getInstanceFor(connection).createEntry(JidCreate.bareFrom(address), address, Array[String]())
+    Roster.getInstanceFor(connection).createItemAndRequestSubscription(JidCreate.bareFrom(address), address, Array[String]())
   }
 
   // BEGIN UNTESTED PUBSUB STUFF
 
   override def publish(nodeName: URI, content: String): Unit = {
-    val manager = PubSubManager.getInstance(connection, connection.getUser.asBareJid())
+    val manager = PubSubManager.getInstanceFor(connection, connection.getUser.asBareJid())
 
     val node = getNode(manager, nodeName, connection.getUser.asUnescapedString()).getOrElse(createNode(manager, nodeName))
 
@@ -206,7 +212,7 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
   }
 
   override def getPublishedData(user: String, nodeName: URI): String = {
-    val manager = PubSubManager.getInstance(connection, JidCreate.bareFrom(user))
+    val manager = PubSubManager.getInstanceFor(connection, JidCreate.bareFrom(user))
 
     getNode(manager, nodeName, user).flatMap(node => {
       node.getItems[PayloadItem[SimplePayload]]().asScala.headOption.map(_.getPayload.toXML(null))
@@ -216,7 +222,7 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
   private def getNode(manager: PubSubManager, node: URI, user: String): Option[LeafNode] = {
     try {
       log.info("User {} attempting to retrieve node {} belonging to {}", connection.getUser, node, user)
-      Some(manager.getNode[LeafNode](node.toString))
+      Some(manager.getLeafNode(node.toString))
     } catch {
       case _: XMPPErrorException =>
         log.info("Node not found (XMPPErrorException)")
@@ -232,7 +238,7 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
 
   private def createNode(manager: PubSubManager, nodeName: URI): LeafNode = {
     log.info("User {} creating node {}", connection.getUser, nodeName)
-    val config = new ConfigureForm(DataForm.Type.submit)
+    val config = new ConfigureForm(DataForm.builder(DataForm.Type.submit).build()).getFillableForm
     config.setPersistentItems(true)
     config.setDeliverPayloads(true)
     config.setAccessModel(AccessModel.presence)
@@ -312,6 +318,8 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
     override def contactsRemoved(contacts: Vector[String]): Unit = {}
 
     override def presenceChanged(contact: ContactInfo): Unit = {}
+
+    override def selfPresenceChanged(presence: Presence): Unit = {}
 
     override def callSignalReceived(user: String, data: String): Unit = {}
 

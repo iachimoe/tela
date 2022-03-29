@@ -3,9 +3,8 @@ package tela.web
 import java.net.URI
 import java.nio.file.Path
 import java.util.UUID
-
 import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill}
-import play.api.libs.json.Json
+import play.api.libs.json.{Json, Writes}
 import tela.baseinterfaces._
 import tela.web.JSONConversions._
 import tela.web.SessionManager._
@@ -56,6 +55,8 @@ object SessionManager {
 
   case class PushPresenceUpdateToWebSockets(sessionId: UUID, update: PresenceUpdate)
 
+  case class PushSelfPresenceUpdateToWebSockets(sessionId: UUID, update: SelfPresenceUpdate)
+
   case class PushCallSignalToWebSockets(sessionId: UUID, callSignalReceipt: CallSignalReceipt)
 
   case class PushChatMessageToWebSockets(sessionId: UUID, chatMessageReceipt: ChatMessageReceipt)
@@ -95,6 +96,7 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
     case PushCallSignalToWebSockets(sessionId, callSignalReceipt) => pushCallSignalToWebSockets(sessionId, callSignalReceipt)
     case PushChatMessageToWebSockets(sessionId, chatMessageReceipt) => pushChatMessageToWebSockets(sessionId, chatMessageReceipt)
     case PushPresenceUpdateToWebSockets(sessionId, presenceUpdate) => pushPresenceUpdateToWebSockets(sessionId, presenceUpdate)
+    case PushSelfPresenceUpdateToWebSockets(sessionId, presenceUpdate) => pushSelfPresenceUpdateToWebSockets(sessionId, presenceUpdate)
     case PushContactListInfoToWebSockets(sessionId, contacts) => pushContactListInfoToWebSockets(sessionId, contacts)
   }
 
@@ -131,7 +133,7 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
 
   private def getContactList(sessionId: UUID): Unit = {
     log.debug("Getting contact list for user with session {}", sessionId)
-    sessions(sessionId).xmppSession.getContactList
+    sessions(sessionId).xmppSession.getContactList()
   }
 
   private def setLanguage(sessionId: UUID, language: String): Unit = {
@@ -215,19 +217,27 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
   }
 
   private def pushCallSignalToWebSockets(sessionId: UUID, callSignalReceipt: CallSignalReceipt): Unit = {
-    sessions.get(sessionId).foreach(_.webSockets.foreach(webSocketActor => webSocketActor ! Json.toJson(callSignalReceipt)))
+    sendMessageAsJSONToWebsockets(sessionId, callSignalReceipt)
   }
 
   private def pushChatMessageToWebSockets(sessionId: UUID, chatMessageReceipt: ChatMessageReceipt): Unit = {
-    sessions.get(sessionId).foreach(_.webSockets.foreach(webSocketActor => webSocketActor ! Json.toJson(chatMessageReceipt)))
+    sendMessageAsJSONToWebsockets(sessionId, chatMessageReceipt)
   }
 
   private def pushPresenceUpdateToWebSockets(sessionId: UUID, presenceUpdate: PresenceUpdate): Unit = {
-    sessions.get(sessionId).foreach(_.webSockets.foreach(webSocketActor => webSocketActor ! Json.toJson(presenceUpdate)))
+    sendMessageAsJSONToWebsockets(sessionId, presenceUpdate)
+  }
+
+  private def pushSelfPresenceUpdateToWebSockets(sessionId: UUID, selfPresenceUpdate: SelfPresenceUpdate): Unit = {
+    sendMessageAsJSONToWebsockets(sessionId, selfPresenceUpdate)
   }
 
   private def pushContactListInfoToWebSockets(sessionId: UUID, contacts: AddContacts): Unit = {
-    sessions.get(sessionId).foreach(_.webSockets.foreach(webSocketActor => webSocketActor ! Json.toJson(contacts)))
+    sendMessageAsJSONToWebsockets(sessionId, contacts)
+  }
+
+  private def sendMessageAsJSONToWebsockets[T](sessionId: UUID, message: T)(implicit jsonConverter: Writes[T]): Unit = {
+    sessions.get(sessionId).foreach(_.webSockets.foreach(webSocketActor => webSocketActor ! Json.toJson(message)))
   }
 
   private def createNewSession(id: UUID, session: XMPPSession, dataStoreConnection: DataStoreConnection, username: String, preferredLanguage: String): Unit = {
@@ -243,6 +253,10 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
 
     override def presenceChanged(contact: ContactInfo): Unit = {
       self ! PushPresenceUpdateToWebSockets(sessionId, PresenceUpdate(contact))
+    }
+
+    override def selfPresenceChanged(presence: Presence): Unit = {
+      self ! PushSelfPresenceUpdateToWebSockets(sessionId, SelfPresenceUpdate(presence))
     }
 
     override def callSignalReceived(user: String, data: String): Unit = {

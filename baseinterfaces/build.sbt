@@ -1,3 +1,4 @@
 libraryDependencies ++= Seq(
-  "org.scalatestplus" %% "mockito-3-3" % "3.1.2.0" % Test
+  "org.scalatest" %% "scalatest" % "3.2.11" % Test,
+  "org.scalatestplus" %% "mockito-4-2" % "3.2.11.0" % Test
 )

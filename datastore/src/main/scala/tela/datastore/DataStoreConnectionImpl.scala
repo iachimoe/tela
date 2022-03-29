@@ -5,7 +5,6 @@ import java.net.URI
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import java.util.{Formatter, Locale, UUID}
-
 import com.typesafe.scalalogging.Logger
 import org.apache.lucene.analysis.standard.StandardAnalyzer
 import org.apache.lucene.document.Field.Store
@@ -15,7 +14,7 @@ import org.apache.lucene.queryparser.classic.QueryParser
 import org.apache.lucene.search.IndexSearcher
 import org.apache.lucene.store.FSDirectory
 import org.apache.tika.config.TikaConfig
-import org.apache.tika.metadata.{Metadata, TikaMetadataKeys}
+import org.apache.tika.metadata.{Metadata, TikaCoreProperties}
 import org.apache.tika.parser.{AutoDetectParser, ParseContext}
 import org.apache.tika.sax.BodyContentHandler
 import org.eclipse.rdf4j.common.iteration.Iterations
@@ -69,6 +68,15 @@ object DataStoreConnectionImpl {
     rdfParser.parse(new StringReader(data), "")
     model
   }
+
+  private def writeDocumentToIndex(luceneIndex: FSDirectory, document: Option[Document]): Unit = {
+    val luceneIndexWriter = new IndexWriter(luceneIndex, new IndexWriterConfig(new StandardAnalyzer()).setCommitOnClose(true))
+    try {
+      document.foreach(luceneIndexWriter.addDocument)
+    } finally {
+      luceneIndexWriter.close()
+    }
+  }
 }
 
 //TODO At the moment this class suffers from various performance/concurrency issues
@@ -88,8 +96,10 @@ class DataStoreConnectionImpl(root: Path, user: String,
   private[datastore] val connection = repository.getConnection
 
   private val luceneIndex = FSDirectory.open(root.resolve(LuceneIndexName))
-  private[datastore] val luceneIndexWriter = new IndexWriter(luceneIndex, new IndexWriterConfig(new StandardAnalyzer()))
-  luceneIndexWriter.commit()
+  if (!DirectoryReader.indexExists(luceneIndex)) {
+    // This will create the index
+    writeDocumentToIndex(luceneIndex, None)
+  }
   private[datastore] var luceneIndexReader: DirectoryReader = DirectoryReader.open(luceneIndex)
 
   private val metadataMapper = new MetadataMapper(genericFileDataMap, dataMapping)
@@ -99,7 +109,6 @@ class DataStoreConnectionImpl(root: Path, user: String,
     connection.close()
     repository.shutDown()
     luceneIndexReader.close()
-    luceneIndexWriter.close()
   }
 
   override def insertJSON(data: String): Unit = {
@@ -194,7 +203,7 @@ class DataStoreConnectionImpl(root: Path, user: String,
     val metadata = new Metadata()
     val autoDetectParser = new AutoDetectParser(new TikaConfig(tikaConfigFile))
 
-    metadata.set(TikaMetadataKeys.RESOURCE_NAME_KEY, originalFileName.toString)
+    metadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, originalFileName.toString)
 
     val stream = new BufferedInputStream(new ByteArrayInputStream(fileContentAsByteArray))
     val fileFormat = autoDetectParser.getDetector.detect(stream, metadata).toString
@@ -209,15 +218,14 @@ class DataStoreConnectionImpl(root: Path, user: String,
     val document = new Document()
     document.add(new StringField(LuceneFileNameField, filename, Store.YES))
     document.add(new TextField(LuceneFileContentField, content, Store.NO))
-    luceneIndexWriter.addDocument(document)
-    luceneIndexWriter.commit()
+    writeDocumentToIndex(luceneIndex, Some(document))
   }
 
   private def calculateHashForFileContent(allBytes: Array[Byte]): String = {
     val messageDigest = MessageDigest.getInstance("SHA1")
     messageDigest.update(allBytes, 0, allBytes.length)
     val formatter = new Formatter()
-    messageDigest.digest().toVector.foreach((b: Byte) => formatter.format(Locale.getDefault, "%02x", b.asInstanceOf[Object]))
+    messageDigest.digest().toVector.foreach((b: Byte) => formatter.format(Locale.getDefault, "%02x", b))
     formatter.toString
   }
 }

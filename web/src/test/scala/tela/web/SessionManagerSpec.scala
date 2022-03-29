@@ -213,6 +213,13 @@ class SessionManagerSpec extends WebBaseSpec {
       () => environment.sessionListener.foreach(_.presenceChanged(ContactInfo(TestContact1, Presence.Away))))
   }
 
+  "selfPresenceChanged" should "notify websockets of changed self presence" in testEnvironment { environment =>
+    val expectedJson = Json.parse(s"""{"$ActionKey":"$SelfPresenceUpdateAction","$DataKey":{"$PresenceKey":"${Presence.DoNotDisturb.toString.toLowerCase}"}}""")
+
+    loginAndAssertThatWebsocketsAreNotifiedOfEvent(environment, expectedJson,
+      () => environment.sessionListener.foreach(_.selfPresenceChanged(Presence.DoNotDisturb)))
+  }
+
   "AddContact" should "add the specified contact in the underlying xmpp session" in testEnvironment { environment =>
     loginAndSendMessage(environment, AddContact(TestSessionId, TestContact1))
     verify(environment.xmppSession).addContact(TestContact1)

@@ -61,7 +61,7 @@ class Module(environment: Environment, configuration: Configuration) extends Abs
     val dataStoreSettings = loadDataStoreSettings(configuration, MappingsFile)
     val supportedLanguages = getSupportedLanguages(LanguagesFile)
 
-    bindActor[SessionManager]("session-manager", props =>
+    bindActor[SessionManager]("session-manager", _ =>
       Props(classOf[SessionManager],
         SmackXMPPSession.connectToServer _,
         createDataStoreConnection(dataStoreSettings),
@@ -87,7 +87,7 @@ class Module(environment: Environment, configuration: Configuration) extends Abs
       generateUUID _)
   }
 
-  private def generateUUID: UUID = {
+  private def generateUUID(): UUID = {
     UUID.randomUUID
   }
 }

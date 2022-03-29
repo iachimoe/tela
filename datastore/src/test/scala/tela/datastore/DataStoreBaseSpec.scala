@@ -3,7 +3,7 @@ package tela.datastore
 import java.net.URI
 import java.nio.file.Paths
 
-import org.apache.tika.metadata.{TikaCoreProperties, TikaMetadataKeys}
+import org.apache.tika.metadata.TikaCoreProperties
 import tela.baseinterfaces.DataStoreConnection.{FileFormatPredicateKey, HashPredicateKey}
 import tela.baseinterfaces.{BaseSpec, ComplexObject, SimpleObject}
 
@@ -40,6 +40,6 @@ trait DataStoreBaseSpec extends BaseSpec {
   ))
 
   protected val PlainTextDataMap = ComplexObject(GenericMediaFileType, Map(
-    new URI("http://schema.org/name") -> SimpleObject(Vector(TikaMetadataKeys.RESOURCE_NAME_KEY))
+    new URI("http://schema.org/name") -> SimpleObject(Vector(TikaCoreProperties.RESOURCE_NAME_KEY))
   ))
 }

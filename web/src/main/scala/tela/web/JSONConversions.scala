@@ -1,7 +1,7 @@
 package tela.web
 
 import play.api.libs.json.{Json, Writes}
-import tela.baseinterfaces.ContactInfo
+import tela.baseinterfaces.{ContactInfo, Presence}
 
 object JSONConversions {
   val ActionKey = "action"
@@ -70,6 +70,18 @@ object JSONConversions {
       DataKey -> Json.obj(
         ContactKey -> presenceUpdate.contact.jid,
         PresenceKey -> presenceUpdate.contact.presence.toString.toLowerCase)
+    )
+  }
+
+  case class SelfPresenceUpdate(presence: Presence)
+
+  val SelfPresenceUpdateAction = "selfPresenceUpdate"
+
+  implicit val selfPresenceUpdateWrites = new Writes[SelfPresenceUpdate] {
+    def writes(presenceUpdate: SelfPresenceUpdate) = Json.obj(
+      ActionKey -> SelfPresenceUpdateAction,
+      DataKey -> Json.obj(
+        PresenceKey -> presenceUpdate.presence.toString.toLowerCase)
     )
   }
 
