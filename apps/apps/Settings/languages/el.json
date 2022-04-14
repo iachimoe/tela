@@ -1,0 +1,9 @@
+{
+    "changePassword": "Αλλάξτε κωδικό",
+    "oldPasswordLabel": "Τωρινός κωδικός",
+    "newPasswordLabel": "Νέος κωδικός",
+    "confirmNewPasswordLabel": "Γράψτε ξανά τον νεο κωδικό",
+    "changePasswordSucceeded": "Ο κωδικός πρόσβασης άλλαξε",
+    "changePasswordFailed": "Η αλλαγή του κωδικού πρόσβασης απέτυχε",
+    "changeLanguage": "Αλλαξτε Γλώσσα"
+}

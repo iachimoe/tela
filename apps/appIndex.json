@@ -55,6 +55,15 @@
             "phone": "Teléfono",
             "chat": "Platicar",
             "myStuff": "Mis Cosas"
+        },
+	"el": {
+            "displayProfile": "Προβολή Προφίλ",
+            "editProfile": "Επεξεργασία Προφίλ",
+            "settings": "Ρυθμίσεις",
+            "contactList": "Λίστα Eπαφών",
+            "phone": "Τηλέφωνο",
+            "chat": "Συνομιλία",
+            "myStuff": "Τα Πράγματα Μου"
         }
     }
 }

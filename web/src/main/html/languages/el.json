@@ -1,0 +1,11 @@
+{
+    "indexPageTitle": "Tela",
+    "loginPageTitle": "Tela - σύνδεση",
+    "welcome": "Καλώς ορίσατε,",
+    "login": "Σύνδεση",
+    "logout": "Αποσύνδεση",
+    "usernameLabel": "Λογαριασμός",
+    "passwordLabel": "Κωδικός",
+    "connectionFailedError": "Η σύνδεση στον διακομιστή απέτυχε",
+    "badCredentialsError": "Λάθος τύπος σύνδεσης/κωδικός πρόσβασης"
+}

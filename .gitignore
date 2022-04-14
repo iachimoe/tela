@@ -1,5 +1,8 @@
 target
 project/project
+project/metals.sbt
 .idea
 .idea_modules
-
+.bsp
+.metals
+.bloop
