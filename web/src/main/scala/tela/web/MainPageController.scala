@@ -2,9 +2,10 @@ package tela.web
 
 import java.nio.file.{Path, Paths}
 import java.util.UUID
-
 import akka.actor.ActorRef
 import akka.pattern.ask
+import org.webjars.play.WebJarsUtil
+
 import javax.inject.{Inject, Named}
 import play.api.Logging
 import play.api.data.Form
@@ -46,7 +47,8 @@ class MainPageController @Inject()(
                                     @Named("session-manager") sessionManager: ActorRef,
                                     @Named("login-page-root") documentRoot: Path,
                                     @Named("app-index-file") appIndex: Path,
-                                    controllerComponents: ControllerComponents
+                                    controllerComponents: ControllerComponents,
+                                    webjarsUtil: WebJarsUtil
                                   )(implicit ec: ExecutionContext) extends AbstractController(controllerComponents) with Logging {
   private val appIndexData = JsonFileHelper.getContents(appIndex)
 
@@ -60,7 +62,7 @@ class MainPageController @Inject()(
       case Some((sessionId, userData)) =>
         if (logout.isEmpty) showMainPage(userData)
         else handleLogout(request, sessionId, userData)
-      case None => showLoginPage(request)
+      case None => showLoginPage(request, Map.empty)
     }
   }
 
@@ -78,7 +80,7 @@ class MainPageController @Inject()(
     Ok(getContent(documentRoot, IndexPage, userData.preferredLanguage, Map(UserTemplateKey -> userData.username,
       AppInfoKey -> (appIndexData \ AppsKeyInIndexHash).as[JsValue].toString(),
       DefaultAppKey -> (appIndexData \ DefaultAppKeyInIndexHash).as[String],
-      LocalizedAppNamesKey -> languageToUse))).as(HTML)
+      LocalizedAppNamesKey -> languageToUse), webjarsUtil)).as(HTML)
   }
 
   private def handleLogout(request: Request[Any], sessionId: UUID, userData: UserData) = {
@@ -87,9 +89,9 @@ class MainPageController @Inject()(
     showLoginPage(request, Map(UserTemplateKey -> userData.username)).withCookies(createSessionCookie(sessionId, MainPageController.CookieExpiresNow))
   }
 
-  private def showLoginPage(request: Request[Any], templateMap: Map[String, String] = Map.empty): Result = {
+  private def showLoginPage(request: Request[Any], templateMap: Map[String, String]): Result = {
     logger.info(s"Showing login page")
-    Ok(getContent(documentRoot, LoginPage, getLanguageFromRequestHeader(request), templateMap)).as(HTML)
+    Ok(getContent(documentRoot, LoginPage, getLanguageFromRequestHeader(request), templateMap, webjarsUtil)).as(HTML)
   }
 
   private def createSessionCookie(sessionId: UUID, maxAge: Option[Int]) = Cookie(SessionIdCookieName, sessionId.toString, maxAge = maxAge)

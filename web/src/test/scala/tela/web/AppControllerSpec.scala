@@ -1,9 +1,10 @@
 package tela.web
 
 import java.nio.file.Paths
-
 import akka.testkit.TestActor.NoAutoPilot
 import org.scalatest.matchers.should.Matchers._
+import org.webjars.play.WebJarsUtil
+import play.api.{Configuration, Environment}
 import play.api.http.Status
 import play.api.mvc.Cookie
 import play.api.test.FakeRequest
@@ -18,7 +19,9 @@ class AppControllerSpec extends SessionManagerClientBaseSpec {
   private def testEnvironment(runTest: TestEnvironment[AppController] => Unit): Unit = {
     val components = controllerComponents()
     implicit val bp = bodyParser(components)
-    runTest(createTestEnvironment((sessionManager, _) => new AppController(new UserAction(sessionManager), sessionManager, TestAppDirectory, components)))
+    runTest(createTestEnvironment((sessionManager, _) =>
+      new AppController(new UserAction(sessionManager), sessionManager, TestAppDirectory,
+        components, new WebJarsUtil(Configuration.empty, Environment.simple()))))
   }
 
   "app" should "return Unauthorized status code for user without session" in testEnvironment { environment =>
@@ -37,7 +40,7 @@ class AppControllerSpec extends SessionManagerClientBaseSpec {
     contentAsString(result) should === ("")
   }
 
-  it should "fall back to English language for missing strings" in testEnvironment { environment =>
+  it should "fall back to English language for missing strings and include javascript dependency info" in testEnvironment { environment =>
     environment.configureTestProbe(sender => {
       case GetSession(TestSessionId) =>
         sender ! Some(UserData(TestUsername, SpanishLanguageCode))
@@ -47,6 +50,6 @@ class AppControllerSpec extends SessionManagerClientBaseSpec {
 
     status(result) should === (Status.OK)
     contentType(result) should === (Some(TextHtmlContentType))
-    contentAsString(result) should === ("Spanish English Ambos")
+    contentAsString(result) should === (s"Spanish English Ambos $BootstrapWebjarPath $FontAwesomeWebjarPath\n")
   }
 }

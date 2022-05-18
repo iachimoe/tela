@@ -4,10 +4,10 @@ import java.io.StringWriter
 import java.nio.file.{Files, Path, Paths}
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-
 import akka.actor.ActorRef
 import akka.pattern.ask
 import akka.util.Timeout
+import org.webjars.play.WebJarsUtil
 import play.api.Logging
 import play.api.mvc.RequestHeader
 import tela.web.SessionManager.GetSession
@@ -24,6 +24,9 @@ package object web extends Logging {
   private[web] val LanguagesFolder = Paths.get("languages")
   private[web] val LanguageFileExtension: String = ".json"
 
+  private[web] val BootstrapCssKey = "bootstrapCss"
+  private[web] val FontAwesomeCssKey = "fontAwesomeCss"
+
   private val TimeoutDurationInSeconds = 9
   private[web] implicit val GeneralTimeout = Timeout(TimeoutDurationInSeconds, TimeUnit.SECONDS)
 
@@ -35,20 +38,29 @@ package object web extends Logging {
     }).getOrElse(Future.successful(None))
   }
 
-  def getContent(documentRoot: Path, filename: Path, preferredLanguage: String, templateMap: Map[String, String]): String = {
+  def getContent(documentRoot: Path, filename: Path, preferredLanguage: String, templateMap: Map[String, String], webjarsUtil: WebJarsUtil): String = {
     val mustache = new NonEscapingMustacheFactory().compile(Files.newBufferedReader(documentRoot.resolve(filename)), "")
     val writer = new StringWriter
-    mustache.execute(writer, getTemplateMappings(documentRoot, preferredLanguage, templateMap).map(_.asJava).toArray[java.lang.Object])
+    mustache.execute(writer, getTemplateMappings(documentRoot, preferredLanguage, templateMap, webjarsUtil).map(_.asJava).toArray[java.lang.Object])
     writer.toString
   }
 
-  private def getTemplateMappings(documentRoot: Path, preferredLanguage: String, templateMap: Map[String, String]): Vector[Map[String, String]] = {
+  private def getTemplateMappings(documentRoot: Path, preferredLanguage: String, templateMap: Map[String, String], webjarsUtil: WebJarsUtil): Vector[Map[String, String]] = {
     val languageFile = getFileForLanguage(documentRoot, preferredLanguage)
     val mappingsForDefaultLanguage = getMappingsForLanguage(getFileForLanguage(documentRoot, DefaultLanguage))
-    if (preferredLanguage != DefaultLanguage && Files.exists(languageFile))
-      Vector(mappingsForDefaultLanguage, getMappingsForLanguage(languageFile), templateMap)
+    val javascriptDependencies = getJavascriptDependencies(webjarsUtil)
+    if (preferredLanguage != DefaultLanguage && Files.exists(languageFile)) {
+      Vector(mappingsForDefaultLanguage, getMappingsForLanguage(languageFile), templateMap, javascriptDependencies)
+    }
     else
-      Vector(mappingsForDefaultLanguage, templateMap)
+      Vector(mappingsForDefaultLanguage, templateMap, javascriptDependencies)
+  }
+
+  private def getJavascriptDependencies(webjarsUtil: WebJarsUtil) = {
+    Vector(
+      BootstrapCssKey -> webjarsUtil.locate("bootstrap", "bootstrap.min.css"),
+      FontAwesomeCssKey -> webjarsUtil.locate("font-awesome", "all.min.css")
+    ).flatMap { case (k, v) => v.url.toOption.map(k -> _)}.toMap
   }
 
   private def getMappingsForLanguage(mappingsFile: Path): Map[String, String] = {

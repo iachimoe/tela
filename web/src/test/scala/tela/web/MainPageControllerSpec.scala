@@ -2,10 +2,11 @@ package tela.web
 
 import java.io.StringWriter
 import java.nio.file.{Files, Path, Paths}
-
 import akka.actor.ActorRef
 import akka.testkit.TestActor.NoAutoPilot
 import org.scalatest.matchers.should.Matchers._
+import org.webjars.play.WebJarsUtil
+import play.api.{Configuration, Environment}
 import play.api.http.{HeaderNames, Status}
 import play.api.libs.json.JsValue
 import play.api.mvc.{Cookie, Result}
@@ -23,7 +24,9 @@ class MainPageControllerSpec extends SessionManagerClientBaseSpec {
   private val AppIndexData = JsonFileHelper.getContents(TestAppIndex)
 
   private def testEnvironment(runTest: TestEnvironment[MainPageController] => Unit): Unit = {
-    runTest(createTestEnvironment((sessionManager, _) => new MainPageController(sessionManager, ContentFolder, TestAppIndex, controllerComponents())))
+    runTest(createTestEnvironment((sessionManager, _) =>
+      new MainPageController(sessionManager, ContentFolder, TestAppIndex,
+        controllerComponents(), new WebJarsUtil(Configuration.empty, Environment.simple()))))
   }
 
   "mainPage" should "display login screen when session cookie is not present" in testEnvironment { environment =>
@@ -171,7 +174,12 @@ class MainPageControllerSpec extends SessionManagerClientBaseSpec {
   private def assertResponseContent(response: Future[Result], template: Path, contentRoot: Path, templateMappings: Map[String, String]*): Unit = {
     val mustache = (new NonEscapingMustacheFactory).compile(Files.newBufferedReader(contentRoot.resolve(template)), "")
     val writer = new StringWriter
-    mustache.execute(writer, templateMappings.map(_.asJava).toArray[Object])
+
+    val templateMappingsIncludingWebjarPaths = templateMappings.toVector :+ Map(
+      BootstrapCssKey -> BootstrapWebjarPath,
+      FontAwesomeCssKey -> FontAwesomeWebjarPath
+    )
+    mustache.execute(writer, templateMappingsIncludingWebjarPaths.map(_.asJava).toArray[Object])
     assertResponseContent(response, writer.toString)
   }
 
