@@ -21,26 +21,20 @@
             "usesLargeScreen": false
         },
         {
-            "name": "displayProfile",
-            "address": "apps/DisplayProfile/index.html",
+            "name": "profile",
+            "address": "apps/Profile/index.html",
             "usesLargeScreen": false
         },
         {
             "name": "settings",
             "address": "apps/Settings/index.html",
             "usesLargeScreen": false
-        },
-        {
-            "name": "editProfile",
-            "address": "apps/EditProfile/index.html",
-            "usesLargeScreen": false
         }
     ],
     "defaultApp": "contactList",
     "languages": {
         "en": {
-            "displayProfile": "Display Profile",
-            "editProfile": "Edit Profile",
+            "profile": "Profile",
             "settings": "Settings",
             "contactList": "Contact List",
             "phone": "Phone",
@@ -48,17 +42,15 @@
             "myStuff": "My Stuff"
         },
         "es": {
-            "displayProfile": "Mostrar Perfil",
-            "editProfile": "Editar Perfil",
+            "profile": "Perfil",
             "settings": "Ajustes",
             "contactList": "Contactos",
             "phone": "Teléfono",
             "chat": "Platicar",
             "myStuff": "Mis Cosas"
         },
-	"el": {
-            "displayProfile": "Προβολή Προφίλ",
-            "editProfile": "Επεξεργασία Προφίλ",
+        "el": {
+            "profile": "Προφίλ",
             "settings": "Ρυθμίσεις",
             "contactList": "Λίστα Eπαφών",
             "phone": "Τηλέφωνο",

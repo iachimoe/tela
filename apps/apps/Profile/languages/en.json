@@ -1,8 +1,11 @@
 {
+    "myProfile": "My profile",
     "nameLabel": "Name",
     "jobTitleLabel": "Job title",
     "emailLabel": "Email",
     "telephoneLabel": "Telephone",
     "descriptionLabel": "Description",
-    "updateProfile": "Update Profile"
+    "editProfile": "Edit Profile",
+    "updateProfile": "Update Profile",
+    "cancel": "Cancel"
 }

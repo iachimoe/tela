@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+
+<link href="{{bootstrapCss}}" rel="stylesheet">
+
+<style>
+    .field-label {
+        font-weight: bold;
+    }
+
+    .profile-field {
+        width: 100%;
+    }
+
+    .readonly-profile-field {
+        border: 0;
+    }
+
+    body {
+        overflow-x: hidden;
+    }
+</style>
+
+<script>
+    function allowDrop(event) {
+        event.preventDefault();
+    }
+
+    function drop(event) {
+        event.preventDefault();
+        handleDropToDownloadProfile(event.dataTransfer.getData("text"));
+    }
+
+    function handleTouchDrop(item) {
+        handleDropToDownloadProfile(item);
+    }
+
+    function handleDropToDownloadProfile(user) {
+        showOtherProfile(user)
+    }
+
+    const AppState = {
+        ViewMyProfile: 0,
+        EditMyProfile: 1,
+        ViewOtherProfile: 2,
+    }
+    let appState = AppState.ViewMyProfile
+
+    const SCHEMA_ROOT = "http://schema.org/";
+
+    const PROFILE_URN = "urn:tela:personalDetails";
+    const FIELDS = ["name", "jobTitle", "email", "telephone", "description"];
+
+    function getUrlForProfileInfo(user) {
+        const PROFILE_URN = "urn:tela:personalDetails";
+        let url = "/data?uri=" + encodeURIComponent(PROFILE_URN);
+        if (user) {
+            url += "&publisher=" + encodeURIComponent(user);
+        }
+        return url;
+    }
+
+    function downloadProfileInfo(user, profileUserLabel) {
+        const client = new XMLHttpRequest();
+
+        client.open('GET', getUrlForProfileInfo(user));
+
+        client.onload = () => {
+            populateUserInfo(JSON.parse(client.response)[0], profileUserLabel);
+        };
+
+        client.send();
+    }
+
+    function saveMyProfile() {
+        const values = {};
+        FIELDS.forEach(field => values[SCHEMA_ROOT + field] = document.getElementById(field).value);
+
+        const json = parent.createJsonLdObjectAsString(PROFILE_URN, SCHEMA_ROOT + "Person", values);
+
+        const client = new XMLHttpRequest();
+
+        client.open("PUT", getUrlForProfileInfo());
+        client.setRequestHeader("Content-Type", "application/ld+json");
+
+        client.onload = () => {
+            showOwnProfile()
+        };
+
+        client.send(json);
+    }
+
+    function actionButtonClicked() {
+        switch (appState) {
+            case AppState.ViewMyProfile:
+                editMyProfile()
+                break
+            case AppState.EditMyProfile:
+                saveMyProfile()
+                break
+            case AppState.ViewOtherProfile:
+                showOwnProfile()
+                break
+        }
+    }
+
+    function cancelButtonClicked() {
+        showOwnProfile()
+    }
+
+    function showOwnProfile() {
+        updateStateAndUIComponents(AppState.ViewMyProfile, "{{editProfile}}", false, true, null)
+    }
+
+    function showOtherProfile(user) {
+        updateStateAndUIComponents(AppState.ViewOtherProfile, "{{myProfile}}", false, true, user)
+    }
+
+    function editMyProfile() {
+        updateStateAndUIComponents(AppState.EditMyProfile, "{{updateProfile}}", true, false, null)
+    }
+
+    function updateStateAndUIComponents(newState, actionButtonText, cancelButtonVisible, readOnly, user) {
+        appState = newState
+        document.getElementById("actionButton").innerText = actionButtonText
+        document.getElementById("cancelButton").style.visibility = cancelButtonVisible ? "visible" : "hidden"
+        FIELDS.forEach(field => {
+            document.getElementById(field).className = readOnly ?
+                "readonly-profile-field profile-field" : "form-control form-control-sm profile-field"
+            document.getElementById(field).readOnly = readOnly
+        })
+        downloadProfileInfo(user, user || "{{myProfile}}")
+    }
+
+    function populateUserInfo(info, profileUserLabel) {
+        document.getElementById("profileUserLabel").innerHTML = profileUserLabel;
+        FIELDS.forEach(field => populateField(field, info));
+    }
+
+    function populateField(field, data) {
+        document.getElementById(field).value =
+            (data != null && data[SCHEMA_ROOT + field]) ?
+                parent.getValueOfJsonLdField(data, SCHEMA_ROOT + field) : ""
+    }
+</script>
+<body ondrop="drop(event)" ondragover="allowDrop(event)" onload="showOwnProfile()">
+<h6 id="profileUserLabel">{{myProfile}}</h6>
+<div style="padding: 3px; display: grid; grid-template-columns: 1fr 3fr">
+    <span class="field-label">{{nameLabel}}</span>
+    <input id="name" />
+    <span class="field-label">{{jobTitleLabel}}</span>
+    <input id="jobTitle" />
+    <span class="field-label">{{emailLabel}}</span>
+    <input id="email" />
+    <span class="field-label">{{telephoneLabel}}</span>
+    <input id="telephone" />
+    <span class="field-label">{{descriptionLabel}}</span>
+    <input id="description" />
+</div>
+<button id="actionButton" onclick="actionButtonClicked()" class="btn btn-primary btn-sm btn-block profile-field"></button>
+<button id="cancelButton" onclick="cancelButtonClicked()" class="btn btn-primary btn-sm btn-block profile-field" style="margin-top: 5px">{{cancel}}</button>
+</body>
+</html>

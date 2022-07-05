@@ -9,7 +9,7 @@ import tela.web.DataController
 class DataRouter @Inject()(controller: DataController) extends SimpleRouter
 {
   override def routes: Routes = {
-    case PUT(q"uriToPublish=$uriToPublish") => controller.publishData(uriToPublish)
+    case PUT(q"uri=$uri") => controller.publishData(uri)
     case PUT(_) => controller.uploadMediaItem()
     case GET(q"hash=$hash") => controller.downloadMediaItem(hash)
     case GET(q"query=$query") => controller.sparqlQuery(query)

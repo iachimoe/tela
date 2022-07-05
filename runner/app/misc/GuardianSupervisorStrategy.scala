@@ -2,12 +2,18 @@ package misc
 
 import akka.actor.SupervisorStrategy.{Resume, Stop}
 import akka.actor.{ActorInitializationException, ActorKilledException, DeathPactException, OneForOneStrategy, SupervisorStrategy, SupervisorStrategyConfigurator}
+import org.slf4j.LoggerFactory
 
 class GuardianSupervisorStrategy extends SupervisorStrategyConfigurator {
+  //TODO not sure if this is the best way to log these exceptions
+  private val log = LoggerFactory.getLogger(this.getClass)
+
   override def create(): SupervisorStrategy = OneForOneStrategy()({
     case _: ActorInitializationException => Stop
     case _: ActorKilledException => Stop
     case _: DeathPactException => Stop
-    case _: Exception => Resume
+    case e: Exception =>
+      log.error("Uncaught actor exception", e)
+      Resume
   })
 }

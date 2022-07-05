@@ -17,5 +17,5 @@ trait WebBaseSpec extends BaseSpec {
 
   // Note that these paths have /webjars in front of them in production, due to how the routes are set up
   protected val BootstrapWebjarPath = "/bootstrap/5.1.3/dist/css/bootstrap.min.css"
-  protected val FontAwesomeWebjarPath = "/font-awesome/6.1.0/css/all.min.css"
+  protected val FontAwesomeWebjarPath = "/font-awesome/6.1.1/css/all.min.css"
 }

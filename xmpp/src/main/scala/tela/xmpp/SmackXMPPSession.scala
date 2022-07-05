@@ -20,6 +20,8 @@ import org.jivesoftware.smackx.iqregister.AccountManager
 import org.jivesoftware.smackx.pubsub.PubSubException.NotAPubSubNodeException
 import org.jivesoftware.smackx.pubsub._
 import org.jivesoftware.smackx.pubsub.form.ConfigureForm
+import org.jivesoftware.smackx.pubsub.packet.PubSub
+import org.jivesoftware.smackx.xdata.FormField
 import org.jivesoftware.smackx.xdata.packet.DataForm
 import org.jxmpp.jid.impl.JidCreate
 import org.jxmpp.jid.parts.Resourcepart
@@ -238,7 +240,21 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
 
   private def createNode(manager: PubSubManager, nodeName: URI): LeafNode = {
     log.info("User {} creating node {}", connection.getUser, nodeName)
-    val config = new ConfigureForm(DataForm.builder(DataForm.Type.submit).build()).getFillableForm
+
+    //TODO Have somewhat lost sight of the whys and wherefores of pubsub with successive versions of Smack.
+    //Perhaps time to revisit and unit test.
+    val fields = Vector[FormField](
+      FormField.booleanBuilder(ConfigureNodeFields.persist_items.getFieldName).build,
+      FormField.booleanBuilder(ConfigureNodeFields.deliver_payloads.getFieldName).build,
+      FormField.listSingleBuilder(ConfigureNodeFields.access_model.getFieldName).build,
+      FormField.listSingleBuilder(ConfigureNodeFields.publish_model.getFieldName).build,
+      FormField.textSingleBuilder(ConfigureNodeFields.max_items.getFieldName).build,
+      FormField.booleanBuilder(ConfigureNodeFields.subscribe.getFieldName).build,
+    )
+
+    val config = new ConfigureForm(
+      DataForm.builder(DataForm.Type.form).addFields(fields.asJava).setFormType(PubSub.NAMESPACE + "#node_config").build()
+    ).getFillableForm
     config.setPersistentItems(true)
     config.setDeliverPayloads(true)
     config.setAccessModel(AccessModel.presence)

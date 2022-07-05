@@ -20,10 +20,9 @@ class DataController @Inject()(
                                 userAction: UserAction,
                                 @Named("session-manager") sessionManager: ActorRef,
                                 controllerComponents: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(controllerComponents) with Logging {
-  def publishData(uriToPublish: String): Action[JsValue] = userAction.apply(parse.tolerantJson) { implicit request =>
-    logger.info(s"User ${request.sessionData.userData.username} publishing uri $uriToPublish")
-    val uri = new URI(uriToPublish)
-    sessionManager ! PublishData(request.sessionData.sessionId, request.body.toString(), uri)
+  def publishData(uri: String): Action[JsValue] = userAction.apply(parse.tolerantJson) { implicit request =>
+    logger.info(s"User ${request.sessionData.userData.username} publishing uri $uri")
+    sessionManager ! PublishData(request.sessionData.sessionId, request.body.toString(), new URI(uri))
     Ok
   }
 
