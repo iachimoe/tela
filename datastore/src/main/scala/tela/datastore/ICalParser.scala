@@ -41,6 +41,8 @@ class ICalParser extends AbstractParser {
   private def getVEventFromCalendar(stream: InputStream): Option[Component] =
     Option(new CalendarBuilder().build(stream).getComponents.getComponent(Component.VEVENT))
 
-  private def property[T <: Property : ClassTag](property: String, component: Component): Option[T] =
-    Option(component.getProperty(property)).collect({ case result: T => result })
+  private def property[T <: Property : ClassTag](property: String, component: Component): Option[T] = {
+    val pf: PartialFunction[Property, T] = { case result: T => result }
+    Option(component.getProperty(property)).collect[T](pf)
+  }
 }

@@ -4,7 +4,7 @@ import java.nio.file.{Path, Paths}
 import java.util.UUID
 import akka.actor.ActorRef
 import akka.pattern.ask
-import org.webjars.play.WebJarsUtil
+import controllers.AssetsFinder
 
 import javax.inject.{Inject, Named}
 import play.api.Logging
@@ -23,7 +23,6 @@ object MainPageController {
   private[web] val UsernameRequestParameter: String = "username"
   private[web] val PasswordRequestParameter: String = "password"
   private[web] val WebAppRoot: String = "/"
-  private[web] val LogoutParameter: String = "logout"
   private[web] val CookieExpiresWhenBrowserCloses = None
   private[web] val CookieExpiresNow = Some(-1)
 
@@ -48,7 +47,7 @@ class MainPageController @Inject()(
                                     @Named("login-page-root") documentRoot: Path,
                                     @Named("app-index-file") appIndex: Path,
                                     controllerComponents: ControllerComponents,
-                                    webjarsUtil: WebJarsUtil
+                                    assetsFinder: AssetsFinder
                                   )(implicit ec: ExecutionContext) extends AbstractController(controllerComponents) with Logging {
   private val appIndexData = JsonFileHelper.getContents(appIndex)
 
@@ -57,7 +56,7 @@ class MainPageController @Inject()(
     PasswordRequestParameter -> text
   )(LoginDetails.apply)(LoginDetails.unapply))
 
-  def mainPage(logout: Option[String] = None) = Action.async { request =>
+  def mainPage(logout: Option[String] = None): Action[AnyContent] = Action.async { request =>
     getSessionFromRequest(request, sessionManager).map {
       case Some((sessionId, userData)) =>
         if (logout.isEmpty) showMainPage(userData)
@@ -66,7 +65,7 @@ class MainPageController @Inject()(
     }
   }
 
-  def handleLogin() = Action.async(parse.form(loginDetailsForm)) { request =>
+  def handleLogin(): Action[LoginDetails] = Action.async(parse.form(loginDetailsForm)) { request =>
     (sessionManager ? Login(request.body.username, request.body.password, getLanguageFromRequestHeader(request))).mapTo[Either[LoginFailure, UUID]].map {
       case Left(loginFailure) => showLoginPage(request, Map(UserTemplateKey -> request.body.username, LoginFailureReasons(loginFailure) -> true.toString))
       case Right(sessionId) => Redirect(WebAppRoot, Map(), status = FOUND).withCookies(createSessionCookie(sessionId, CookieExpiresWhenBrowserCloses))
@@ -80,7 +79,7 @@ class MainPageController @Inject()(
     Ok(getContent(documentRoot, IndexPage, userData.preferredLanguage, Map(UserTemplateKey -> userData.username,
       AppInfoKey -> (appIndexData \ AppsKeyInIndexHash).as[JsValue].toString(),
       DefaultAppKey -> (appIndexData \ DefaultAppKeyInIndexHash).as[String],
-      LocalizedAppNamesKey -> languageToUse), webjarsUtil)).as(HTML)
+      LocalizedAppNamesKey -> languageToUse), assetsFinder)).as(HTML)
   }
 
   private def handleLogout(request: Request[Any], sessionId: UUID, userData: UserData) = {
@@ -91,7 +90,7 @@ class MainPageController @Inject()(
 
   private def showLoginPage(request: Request[Any], templateMap: Map[String, String]): Result = {
     logger.info(s"Showing login page")
-    Ok(getContent(documentRoot, LoginPage, getLanguageFromRequestHeader(request), templateMap, webjarsUtil)).as(HTML)
+    Ok(getContent(documentRoot, LoginPage, getLanguageFromRequestHeader(request), templateMap, assetsFinder)).as(HTML)
   }
 
   private def createSessionCookie(sessionId: UUID, maxAge: Option[Int]) = Cookie(SessionIdCookieName, sessionId.toString, maxAge = maxAge)

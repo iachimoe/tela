@@ -88,6 +88,6 @@ class Module(environment: Environment, configuration: Configuration) extends Abs
   }
 
   private def generateUUID(): UUID = {
-    UUID.randomUUID
+    UUID.randomUUID()
   }
 }

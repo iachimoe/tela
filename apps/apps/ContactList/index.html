@@ -30,14 +30,7 @@
     let connection = null;
 
     function establishConnection() {
-        connection = parent.createEventsWebSocket();
-
-        connection.onopen = function () {
-            const json = {"action": "getContactList"};
-            connection.send(JSON.stringify(json));
-        };
-
-        connection.onmessage = function (e) {
+        parent.createEventsWebSocket(conn => connection = conn, e => {
             const message = JSON.parse(e.data);
             if (message["action"] === "addContacts") {
                 const contacts = message["data"];
@@ -50,7 +43,12 @@
             else if (message["action"] === "selfPresenceUpdate") {
                 document.getElementById("selfPresenceSelector").value = message["data"]["presence"];
             }
-        }
+        });
+
+        connection.onopen = () => {
+            const json = {"action": "getContactList"};
+            connection.send(JSON.stringify(json));
+        };
     }
 
     function displayAddedContacts(contacts) {

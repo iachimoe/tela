@@ -39,9 +39,7 @@
             return;
         }
 
-        connection = parent.createEventsWebSocket();
-
-        connection.onmessage = function (e) {
+        connection = parent.createEventsWebSocket(conn => connection = conn, e => {
             const message = JSON.parse(e.data);
             if (message["action"] === "callSignalReceived") {
                 const user = message["data"]["user"];
@@ -57,7 +55,7 @@
                     receiveCall(user, data);
                 }
             }
-        };
+        })
     }
 
     function sendMessage(msg, recipient) {

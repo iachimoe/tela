@@ -1,14 +1,13 @@
 package tela.web
 
 import play.api.Logging
-import play.api.mvc.{AbstractController, ControllerComponents}
+import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents}
 
 import javax.inject.Inject
-import scala.concurrent.ExecutionContext
 
-class StatusController @Inject()(controllerComponents: ControllerComponents)(implicit ec: ExecutionContext)
+class StatusController @Inject()(controllerComponents: ControllerComponents)
   extends AbstractController(controllerComponents) with Logging {
-  def ping() = Action {
+  def ping(): Action[AnyContent] = Action {
     logger.debug("Received ping request")
     Ok("OK")
   }

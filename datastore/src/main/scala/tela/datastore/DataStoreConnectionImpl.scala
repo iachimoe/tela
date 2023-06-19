@@ -87,7 +87,6 @@ class DataStoreConnectionImpl(root: Path, user: String,
                               generateUUID: () => UUID) extends DataStoreConnection {
   private val memoryStore: MemoryStore = new MemoryStore(root.toFile)
   private val luceneSail = new LuceneSail()
-  luceneSail.setParameter(LuceneSail.INDEX_CLASS_KEY, "org.eclipse.rdf4j.sail.lucene.LuceneIndex")
   luceneSail.setParameter(LuceneSail.LUCENE_RAMDIR_KEY, "true")
   luceneSail.setBaseSail(memoryStore)
 

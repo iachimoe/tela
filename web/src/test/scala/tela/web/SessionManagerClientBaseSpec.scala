@@ -3,6 +3,8 @@ package tela.web
 import akka.actor.{ActorRef, ActorSystem, FSM}
 import akka.testkit.TestActor.{AutoPilot, KeepRunning, NoAutoPilot}
 import akka.testkit.{TestActor, TestProbe}
+import org.mockito.Mockito._
+import controllers.AssetsFinder
 import play.api.http.{HeaderNames, Status}
 import play.api.mvc.{BodyParsers, ControllerComponents}
 import play.api.test.{EssentialActionCaller, Helpers, ResultExtractors, Writeables}
@@ -46,4 +48,12 @@ class SessionManagerClientBaseSpec extends WebBaseSpec with ResultExtractors wit
   protected def controllerComponents(): ControllerComponents = Helpers.stubControllerComponents()
 
   protected def bodyParser(components: ControllerComponents): BodyParsers.Default = new BodyParsers.Default(components.parsers)
+
+  protected def createMockAssetsFinder(): AssetsFinder = {
+    val assetsFinder = mock[AssetsFinder]
+    when(assetsFinder.path(BootstrapCssFileName)).thenReturn(BootstrapTestAssetPath)
+    when(assetsFinder.path(FontAwesomeFileName)).thenReturn(FontAwesomeTestAssetPath)
+    when(assetsFinder.path(TextEditorJsFileName)).thenReturn(TextEditorTestAssetPath)
+    assetsFinder
+  }
 }

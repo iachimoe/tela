@@ -2,12 +2,13 @@ package tela.web
 
 import akka.actor.ActorRef
 import akka.pattern.ask
+
 import javax.inject.{Inject, Named}
 import play.api.Logging
 import play.api.data.Form
 import play.api.data.Forms.{mapping, _}
 import play.api.libs.json.Json
-import play.api.mvc.{AbstractController, ControllerComponents}
+import play.api.mvc.{AbstractController, Action, AnyContent, ControllerComponents}
 import tela.web.JSONConversions.LanguageInfo
 import tela.web.SessionManager.{ChangePassword, GetLanguages, SetLanguage}
 import tela.web.SettingsController._
@@ -28,7 +29,7 @@ class SettingsController @Inject()(
 
   private val languageForm = Form(mapping(JSONConversions.LanguageKey -> text)(Language.apply)(Language.unapply))
 
-  def changePassword() = userAction.async(parse.form(changePasswordForm)) { implicit request =>
+  def changePassword(): Action[ChangePasswordRequest] = userAction.async(parse.form(changePasswordForm)) { implicit request =>
     logger.info(s"User with session ID ${request.sessionData.sessionId} attempting to change password")
 
     val changePasswordRequest = request.body
@@ -38,13 +39,13 @@ class SettingsController @Inject()(
     })
   }
 
-  def changeLanguage() = userAction.apply(parse.form(languageForm)) { implicit request =>
+  def changeLanguage(): Action[Language] = userAction.apply(parse.form(languageForm)) { implicit request =>
     logger.info(s"User with session ID ${request.sessionData.sessionId} changing language to ${request.body.code}")
     sessionManager ! SetLanguage(request.sessionData.sessionId, request.body.code)
     Ok
   }
 
-  def listAvailableLanguages() = userAction.async { implicit request =>
+  def listAvailableLanguages(): Action[AnyContent] = userAction.async { implicit request =>
     logger.info(s"User with session ID ${request.sessionData.sessionId} requesting available languages")
     (sessionManager ? GetLanguages(request.sessionData.sessionId)).mapTo[LanguageInfo].map(availableLanguages => {
       Ok(Json.toJson(availableLanguages))

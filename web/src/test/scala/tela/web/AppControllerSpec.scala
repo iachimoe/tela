@@ -3,8 +3,6 @@ package tela.web
 import java.nio.file.Paths
 import akka.testkit.TestActor.NoAutoPilot
 import org.scalatest.matchers.should.Matchers._
-import org.webjars.play.WebJarsUtil
-import play.api.{Configuration, Environment}
 import play.api.http.Status
 import play.api.mvc.Cookie
 import play.api.test.FakeRequest
@@ -20,8 +18,8 @@ class AppControllerSpec extends SessionManagerClientBaseSpec {
     val components = controllerComponents()
     implicit val bp = bodyParser(components)
     runTest(createTestEnvironment((sessionManager, _) =>
-      new AppController(new UserAction(sessionManager), sessionManager, TestAppDirectory,
-        components, new WebJarsUtil(Configuration.empty, Environment.simple()))))
+      new AppController(new UserAction(sessionManager), TestAppDirectory,
+        components, createMockAssetsFinder())))
   }
 
   "app" should "return Unauthorized status code for user without session" in testEnvironment { environment =>
@@ -50,6 +48,6 @@ class AppControllerSpec extends SessionManagerClientBaseSpec {
 
     status(result) should === (Status.OK)
     contentType(result) should === (Some(TextHtmlContentType))
-    contentAsString(result) should === (s"Spanish English Ambos $BootstrapWebjarPath $FontAwesomeWebjarPath\n")
+    contentAsString(result) should === (s"Spanish English Ambos $BootstrapTestAssetPath $FontAwesomeTestAssetPath $TextEditorTestAssetPath\n")
   }
 }

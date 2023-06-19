@@ -5,8 +5,6 @@ import java.nio.file.{Files, Path, Paths}
 import akka.actor.ActorRef
 import akka.testkit.TestActor.NoAutoPilot
 import org.scalatest.matchers.should.Matchers._
-import org.webjars.play.WebJarsUtil
-import play.api.{Configuration, Environment}
 import play.api.http.{HeaderNames, Status}
 import play.api.libs.json.JsValue
 import play.api.mvc.{Cookie, Result}
@@ -26,7 +24,7 @@ class MainPageControllerSpec extends SessionManagerClientBaseSpec {
   private def testEnvironment(runTest: TestEnvironment[MainPageController] => Unit): Unit = {
     runTest(createTestEnvironment((sessionManager, _) =>
       new MainPageController(sessionManager, ContentFolder, TestAppIndex,
-        controllerComponents(), new WebJarsUtil(Configuration.empty, Environment.simple()))))
+        controllerComponents(), createMockAssetsFinder())))
   }
 
   "mainPage" should "display login screen when session cookie is not present" in testEnvironment { environment =>
@@ -176,8 +174,8 @@ class MainPageControllerSpec extends SessionManagerClientBaseSpec {
     val writer = new StringWriter
 
     val templateMappingsIncludingWebjarPaths = templateMappings.toVector :+ Map(
-      BootstrapCssKey -> BootstrapWebjarPath,
-      FontAwesomeCssKey -> FontAwesomeWebjarPath
+      BootstrapCssKey -> BootstrapTestAssetPath,
+      FontAwesomeCssKey -> FontAwesomeTestAssetPath
     )
     mustache.execute(writer, templateMappingsIncludingWebjarPaths.map(_.asJava).toArray[Object])
     assertResponseContent(response, writer.toString)

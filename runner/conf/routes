@@ -14,6 +14,6 @@ GET        /settings/languages  @tela.web.SettingsController.listAvailableLangua
 
 GET        /events              @tela.web.EventsController.webSocket
 
-->         /webjars             webjars.Routes
+GET        /assets/*file        controllers.Assets.at(path="/public", file)
 
 GET        /ping                @tela.web.StatusController.ping()

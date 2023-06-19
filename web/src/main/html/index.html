@@ -40,12 +40,18 @@
 
         // BEGIN WEBSOCKET FUNCTIONS
 
-        function createEventsWebSocket() {
-            return new WebSocket([
+        function createEventsWebSocket(saveConnectionReference, onmessage) {
+            const webSocket = new WebSocket([
                 window.location.protocol.toLowerCase() === 'https:' ? 'wss://' : 'ws://',
                 window.location.host,
                 '/events'
             ].join(''))
+            saveConnectionReference(webSocket)
+            webSocket.onmessage = onmessage
+            webSocket.onclose = () => {
+                createEventsWebSocket(saveConnectionReference, onmessage)
+            }
+            return webSocket
         }
 
         // BEGIN FRAME MANAGEMENT FUNCTIONS

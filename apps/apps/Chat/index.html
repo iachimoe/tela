@@ -91,7 +91,8 @@
     /* end container of messages */
 
     /* text input */
-    .scribe {
+
+    .tiptapContainer {
         height: 60px;
         overflow: auto;
         box-sizing: border-box;
@@ -99,6 +100,13 @@
         margin-left: 5px;
         margin-bottom: 3px;
         border: 1px solid black;
+    }
+
+    .ProseMirror {
+        min-height: 100%;
+        overflow: scroll;
+        padding-right: 10px;
+        padding-left: 2px;
     }
 
     .chatControlButtonContainer {
@@ -138,22 +146,18 @@
     }
 </style>
 
-<script src="/webjars/requirejs/2.3.6/require.js"></script>
-
-<script>
+<script type="module">
     // BEGIN WEBSOCKET
 
     let connection = null;
 
     function establishConnection() {
-        connection = parent.createEventsWebSocket();
-
-        connection.onmessage = function (e) {
+        connection = parent.createEventsWebSocket(conn => connection = conn, e => {
             const message = JSON.parse(e.data);
             if (message["action"] === "chatMessageReceived") {
                 handleIncomingMessage(message["data"]["user"], message["data"]["message"]);
             }
-        };
+        })
     }
 
     function sendMessageToUser(data, recipient) {
@@ -176,20 +180,7 @@
     }
 
     // BEGIN UI
-
-    let Scribe = null;
-    let scribePluginToolbar = null;
-
-    require({
-            paths: {
-                'scribe': '/webjars/scribe/3.2.0/scribe',
-                'scribe-plugin-toolbar': '/webjars/scribe-plugin-toolbar/1.0.0/scribe-plugin-toolbar'
-            }
-        }, ['scribe', 'scribe-plugin-toolbar'],
-        function (localScribe, localScribePluginToolbar) {
-            Scribe = localScribe;
-            scribePluginToolbar = localScribePluginToolbar;
-        });
+    import {createEditor, attachCommand} from '{{textEditorJs}}'
 
     function addTextToChatPanel(user, text, className) {
         const listItem = document.createElement("li");
@@ -207,9 +198,9 @@
     }
 
     function sendMessage(user) {
-        if (getScribeForUser(user).getTextContent() !== "") {
-            const message = getScribeForUser(user).getHTML();
-            getScribeForUser(user).setHTML("");
+        if (!getTiptapEditorForUser(user).isEmpty) {
+            const message = getTiptapEditorForUser(user).getHTML();
+            getTiptapEditorForUser(user).commands.clearContent();
             addTextToChatPanel(user, message, "localMessage");
             sendMessageToUser(message, user);
         }
@@ -232,7 +223,7 @@
         toolbar.appendChild(boldButton);
         toolbar.appendChild(italicButton);
 
-        const scribeElement = createElementWithClass("div", "scribe");
+        const tiptapContainer = createElementWithClass("div", "tiptapContainer");
 
         const enterButton = createElementWithClass("label", "btn btn-primary sendButton");
         const enterButtonIcon = createElementWithClass("i", "fas fa-paper-plane");
@@ -247,7 +238,7 @@
 
         inputPanel.appendChild(toolbar);
         inputPanel.appendChild(chatControlButtonContainer);
-        inputPanel.appendChild(scribeElement);
+        inputPanel.appendChild(tiptapContainer);
         container.appendChild(inputPanel);
 
         return container;
@@ -278,8 +269,7 @@
     }
 
     function createFormattingButton(type, fontAwesomeIcon) {
-        const button = createElementWithClass("label", "btn btn-primary formattingButton");
-        button.setAttribute("data-command-name", type);
+        const button = createElementWithClass("label", `btn btn-primary formattingButton ${type}Button`);
 
         const thisIcon = createElementWithClass("i", "fas " + fontAwesomeIcon);
         button.appendChild(thisIcon);
@@ -314,15 +304,30 @@
     function createNewChat(user) {
         const container = createChatPanel(user);
 
-        const scribe = new Scribe(container.querySelector(".scribe"), {allowBlockElements: true});
-        scribe.use(scribePluginToolbar(container.querySelector(".toolbar")));
+        const editor = createEditor(container.querySelector(".tiptapContainer"))
+        const boldButton = container.querySelector(".boldButton");
+        boldButton.onclick = () => attachCommand(editor, "toggleBold")
+        const italicButton = container.querySelector(".italicButton");
+        italicButton.onclick = () => attachCommand(editor, "toggleItalic")
+        editor.on("transaction", ({ editor }) => {
+            if (editor.isActive("bold")) {
+                boldButton.classList.add("active");
+            } else {
+                boldButton.classList.remove("active");
+            }
+            if (editor.isActive("italic")) {
+                italicButton.classList.add("active");
+            } else {
+                italicButton.classList.remove("active");
+            }
+        })
 
         const tab = createChatTab(user);
 
         document.getElementById("chatPane").appendChild(container);
         document.getElementById("tabs").appendChild(tab);
 
-        addChatToList(user, scribe, container, tab);
+        addChatToList(user, editor, container, tab);
 
         if (foregroundChatUsername == null) {
             switchToChat(user);
@@ -361,8 +366,8 @@
         return chats[user] != null;
     }
 
-    function getScribeForUser(user) {
-        return chats[user]["scribe"];
+    function getTiptapEditorForUser(user) {
+        return chats[user]["tiptap"];
     }
 
     function getChatPanelForUser(user) {
@@ -373,13 +378,17 @@
         return chats[user]["tab"];
     }
 
-    function addChatToList(user, scribe, panel, tab) {
+    function addChatToList(user, tiptap, panel, tab) {
         chats[user] = {
-            "scribe": scribe,
+            "tiptap": tiptap,
             "panel": panel,
             "tab": tab
         }
     }
+    window.drop = drop
+    window.allowDrop = allowDrop
+    window.establishConnection = establishConnection
+    window.handleTouchDrop = handleTouchDrop
 </script>
 
 <body ondrop="drop(event)" ondragover="allowDrop(event)" onload="establishConnection()">
