@@ -1,19 +1,19 @@
 package tela.web
 
 import java.net.URI
-import java.nio.file.{Path, Paths}
-
+import java.nio.file.{FileSystem, FileSystems, Files, Path, Paths, ProviderNotFoundException}
 import akka.actor.ActorRef
 import akka.pattern.ask
+
 import javax.inject.{Inject, Named}
 import play.api.Logging
 import play.api.http.HttpEntity.Streamed
 import play.api.libs.Files.TemporaryFile
-import play.api.libs.json.{JsValue, Json}
+import play.api.libs.json.JsValue
 import play.api.mvc._
-import tela.web.JSONConversions.TextSearchResult
 import tela.web.SessionManager._
 
+import java.time.LocalDateTime
 import scala.concurrent.ExecutionContext
 
 class DataController @Inject()(
@@ -29,11 +29,23 @@ class DataController @Inject()(
   def uploadMediaItem(): Action[MultipartFormData[TemporaryFile]] = userAction.apply(parse.multipartFormData) { implicit request =>
     val files = request.body.files.head
     logger.info(s"User ${request.sessionData.userData.username} uploading file ${files.filename}")
-    sessionManager ! StoreMediaItem(request.sessionData.sessionId, files.ref.path, Paths.get(files.filename))
+    sessionManager ! StoreMediaItem(request.sessionData.sessionId,
+      files.ref.path,
+      Paths.get(files.filename),
+      getDateFromLastModifiedHeader(request))
     Ok
   }
 
-  def retrieveData(uri: String, publisher: Option[String]) = userAction.async { implicit request =>
+  private def getDateFromLastModifiedHeader(request: UserRequest[MultipartFormData[TemporaryFile]]) =
+    request.headers.get(LAST_MODIFIED).flatMap(asString => {
+      try {
+        Some(LocalDateTime.parse(asString, ResponseHeader.httpDateFormat))
+      } catch {
+        case _: Throwable => None
+      }
+    })
+
+  def retrieveData(uri: String, publisher: Option[String]): Action[AnyContent] = userAction.async { implicit request =>
     val sessionId = request.sessionData.sessionId
     val uriObj = new URI(uri)
     val messageToSend = publisher.map(pub => RetrievePublishedData(sessionId, pub, uriObj)).getOrElse(RetrieveData(sessionId, uriObj))
@@ -44,30 +56,92 @@ class DataController @Inject()(
     })
   }
 
-  def downloadMediaItem(hash: String) = userAction.async { implicit request =>
+  def downloadMediaItem(hash: String): Action[AnyContent] = userAction.async { implicit request =>
     logger.info(s"User ${request.sessionData.userData.username} requesting media item $hash")
     (sessionManager ? RetrieveMediaItem(request.sessionData.sessionId, hash)).mapTo[Option[Path]].map {
-      case Some(file) =>
-        val r: Result = Ok.sendPath(file)
-        //Play tends to set the content type to something very generic by default,
-        //which prompts the browser to download (save to disk) rather than display the file in the browser
-        //By not setting the content type, the browser will do its own checks to see whether it's something that it can render
-        r.copy(body = r.body.asInstanceOf[Streamed].copy(contentType = None))
+      case Some(path) => sendPathWithEmptyContentType(path, () => {})
       case None => NotFound
     }
   }
 
-  def sparqlQuery(query: String) = userAction.async { implicit request =>
+  def downloadMediaItem(hash: String, childPath: String): Action[AnyContent] = userAction.async { implicit request =>
+    logger.info(s"User ${request.sessionData.userData.username} requesting path $childPath from media item $hash")
+    (sessionManager ? RetrieveMediaItem(request.sessionData.sessionId, hash)).mapTo[Option[Path]].map { maybeFile =>
+      maybeFile.flatMap(file => getChildFromArchive(file, childPath)).map {
+        case (path, fileSystems) => sendPathWithEmptyContentType(path, () => closeFileSystems(fileSystems))
+      }.getOrElse(NotFound)
+    }
+  }
+
+  private def sendPathWithEmptyContentType(path: Path, onClose: () => Unit) = {
+    //Play tends to set the content type to something very generic by default,
+    //which prompts the browser to download (save to disk) rather than display the file in the browser
+    //By not setting the content type, the browser will do its own checks to see whether it's something that it can render
+    val r: Result = Ok.sendPath(path, onClose = onClose)
+    r.copy(body = r.body.asInstanceOf[Streamed].copy(contentType = None))
+  }
+
+  // Was originally going to do the file extraction in the data layer, but as the returned by FileSystem objects
+  // contain a reference to the FileSystem, it seems unwise to be passing them around via Akka,
+  // especially if we want to run the data layer in a different JVM in the future, using, for example, Akka cluster.
+  private def getChildFromArchive(archive: Path, childPath: String): Option[(Path, Vector[FileSystem])] = {
+    if (childPath.isEmpty) None
+    else try {
+      recursivelyGetPathForChild(FileSystems.newFileSystem(archive, null), Paths.get(childPath), None, Vector.empty)
+    } catch {
+      case _: ProviderNotFoundException => None
+    }
+  }
+
+  // This is particularly gnarly, but I don't see a way to simplify it at this moment
+  // It would be very nice to have a unit test (or tests) to ensure that the various filesystem objects get closed
+  // (both for cases where the file was not found, and where it was)
+  private def recursivelyGetPathForChild(fileSystem: FileSystem, childPath: Path, parent: Option[Path], oldFileSystems: Vector[FileSystem]): Option[(Path, Vector[FileSystem])] = {
+    if (childPath.getNameCount == 1) {
+      getPathForChild(fileSystem, childPath, parent, oldFileSystems)
+    } else {
+      val firstPart = childPath.subpath(0, 1)
+      val secondPart = childPath.subpath(1, 2)
+      val allPartsExceptFirst = childPath.subpath(1, childPath.getNameCount)
+      val firstPartWithParents = parent.map(_.resolve(firstPart)).getOrElse(firstPart)
+      val pathWithinFileSystem = fileSystem.getPath(firstPartWithParents.toString, secondPart.toString)
+
+      if (Files.exists(pathWithinFileSystem)) {
+        recursivelyGetPathForChild(fileSystem, allPartsExceptFirst, Some(firstPartWithParents), oldFileSystems)
+      } else {
+        try {
+          val newfs = FileSystems.newFileSystem(fileSystem.getPath(firstPartWithParents.toString), null)
+          recursivelyGetPathForChild(newfs, allPartsExceptFirst, None, fileSystem +: oldFileSystems)
+        } catch {
+          case _: Throwable =>
+            // The most likely cases are FileSystemNotFoundException and ProviderNotFoundException
+            // but we want to close the filesystems we opened for any kind of exception
+            closeFileSystems(fileSystem +: oldFileSystems)
+            None
+        }
+      }
+    }
+  }
+
+  private def getPathForChild(fileSystem: FileSystem, childPath: Path, parent: Option[Path], oldFileSystems: Vector[FileSystem]) = {
+    val absolutePath = parent.map(_.resolve(childPath)).getOrElse(childPath)
+    val pathWithinFileSystem = fileSystem.getPath(absolutePath.toString)
+    if (Files.exists(pathWithinFileSystem))
+      Some(pathWithinFileSystem, fileSystem +: oldFileSystems)
+    else {
+      closeFileSystems(fileSystem +: oldFileSystems)
+      None
+    }
+  }
+
+  private def closeFileSystems(fileSystems: Vector[FileSystem]): Unit = {
+    fileSystems.foreach(_.close())
+  }
+
+  def sparqlQuery(query: String): Action[AnyContent] = userAction.async { implicit request =>
     logger.info(s"User ${request.sessionData.userData.username} running SPARQL query $query")
     (sessionManager ? SPARQLQuery(request.sessionData.sessionId, query)).mapTo[String].map(result => {
       Ok(result).as(JsonLdContentType)
-    })
-  }
-
-  def textSearch(text: String) = userAction.async { implicit request =>
-    logger.info(s"User ${request.sessionData.userData.username} running text search for <$text>")
-    (sessionManager ? TextSearch(request.sessionData.sessionId, text)).mapTo[TextSearchResult].map(result => {
-      Ok(Json.toJson(result))
     })
   }
 }

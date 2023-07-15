@@ -266,8 +266,8 @@ class SessionManagerSpec extends WebBaseSpec {
   "StoreMediaItem" should "instruct the data store to store the file at the specified location" in testEnvironment { environment =>
     val tempFile = Paths.get("tempFile")
     val originalFileName = Paths.get("myFile.txt")
-    loginAndSendMessage(environment, StoreMediaItem(TestSessionId, tempFile, originalFileName))
-    verify(environment.dataStoreConnection).storeMediaItem(tempFile, originalFileName)
+    loginAndSendMessage(environment, StoreMediaItem(TestSessionId, tempFile, originalFileName, Some(TestDateAsLocalDateTime)))
+    verify(environment.dataStoreConnection).storeMediaItem(tempFile, originalFileName, Some(TestDateAsLocalDateTime))
   }
 
   "RetrieveMediaItem" should "get the filename for the given hash from the data store" in testEnvironment { environment =>
@@ -279,13 +279,6 @@ class SessionManagerSpec extends WebBaseSpec {
     val sampleSparqlQuery = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
     when(environment.dataStoreConnection.runSPARQLQuery(sampleSparqlQuery)).thenReturn("[]")
     loginAndSendMessageExpectingResponse[String](environment, SPARQLQuery(TestSessionId, sampleSparqlQuery)) should === ("[]")
-  }
-
-  "TextSearch" should "send the given query to the data store and return the result" in testEnvironment { environment =>
-    val searchResult: Vector[String] = Vector("result1", "result2")
-    val query: String = "blah"
-    when(environment.dataStoreConnection.textSearch(query)).thenReturn(searchResult)
-    loginAndSendMessageExpectingResponse[TextSearchResult](environment, TextSearch(TestSessionId, query)) should === (TextSearchResult(searchResult))
   }
 
   "events on non-existent session" should "not cause exceptions" in testEnvironment { environment =>

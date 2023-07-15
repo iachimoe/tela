@@ -2,9 +2,15 @@
   "generic": {
     "mediaItemType": "http://schema.org/MediaObject",
     "children": {
-      "http://schema.org/alternateName": {
+      "http://schema.org/identifier": {
         "properties": [
           "hashPredicate"
+        ],
+        "dataType": "Text"
+      },
+      "http://schema.org/alternateName": {
+        "properties": [
+          "fileNamePredicate"
         ],
         "dataType": "Text"
       },
@@ -13,6 +19,18 @@
           "fileFormatPredicate"
         ],
         "dataType": "Text"
+      },
+      "http://schema.org/description": {
+        "properties": [
+          "textContentPredicate"
+        ],
+        "dataType": "Text"
+      },
+      "http://schema.org/dateModified": {
+        "properties": [
+          "dcterms:modified"
+        ],
+        "dataType": "DateTime"
       }
     }
   },
@@ -56,14 +74,15 @@
     {
       "types": [
         "video/quicktime",
-        "video/x-m4v"
+        "video/x-m4v",
+        "video/mp4"
       ],
       "conf": {
         "mediaItemType": "http://schema.org/VideoObject",
         "children": {
           "http://schema.org/dateCreated": {
             "properties": [
-              "Creation-Date"
+              "dcterms:created"
             ],
             "dataType": "DateTime"
           },
@@ -90,8 +109,7 @@
     {
       "types": [
         "audio/mpeg",
-        "audio/mp4",
-        "video/mp4"
+        "audio/mp4"
       ],
       "conf": {
         "mediaItemType": "http://schema.org/AudioObject",
@@ -129,7 +147,7 @@
         "children": {
           "http://schema.org/dateCreated": {
             "properties": [
-              "Creation-Date"
+              "dcterms:created"
             ],
             "dataType": "DateTime"
           },

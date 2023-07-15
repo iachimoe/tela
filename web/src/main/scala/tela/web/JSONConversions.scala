@@ -7,13 +7,8 @@ object JSONConversions {
   val ActionKey = "action"
   val DataKey = "data"
 
-  // LANGUAGES
-
   case class LanguageInfo(languages: Map[String, String], selected: String)
 
-  val SetLanguagesAction = "setLanguages"
-  val GetLanguagesAction = "getLanguages"
-  val SetLanguageAction = "setLanguage"
   val LanguagesKey = "languages"
   val SelectedLanguageKey = "selected"
   val LanguageKey = "language"
@@ -24,22 +19,8 @@ object JSONConversions {
       SelectedLanguageKey -> languages.selected)
   }
 
-  // TEXT SEARCH
-  val TextSearchResultsKey = "results"
-
-  case class TextSearchResult(files: Vector[String])
-
-  implicit val textSearchResultWrites = new Writes[TextSearchResult] {
-    override def writes(result: TextSearchResult) = Json.obj(
-      TextSearchResultsKey -> result.files
-    )
-  }
-
-  // CHANGE PASSWORD
   val OldPasswordKey = "oldPassword"
   val NewPasswordKey = "newPassword"
-
-  // CONTACTS/PRESENCE
 
   val ContactKey = "contact"
   val PresenceKey = "presence"

@@ -11,9 +11,9 @@ class DataRouter @Inject()(controller: DataController) extends SimpleRouter
   override def routes: Routes = {
     case PUT(q"uri=$uri") => controller.publishData(uri)
     case PUT(_) => controller.uploadMediaItem()
-    case GET(q"hash=$hash") => controller.downloadMediaItem(hash)
     case GET(q"query=$query") => controller.sparqlQuery(query)
-    case GET(q"text=$text") => controller.textSearch(text)
     case GET(q"uri=$uri" & q_o"publisher=$publisher") => controller.retrieveData(uri, publisher)
+    case GET(p"/$hash/$childPath*") => controller.downloadMediaItem(hash, childPath)
+    case GET(p"/$hash") => controller.downloadMediaItem(hash)
   }
 }

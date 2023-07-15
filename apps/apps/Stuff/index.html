@@ -27,7 +27,7 @@
             }
         }
 
-        linkToObject() {
+        viewObject() {
             const link = document.createElement('a');
             link.href = "#";
             link.innerHTML = "{{view}}";
@@ -36,9 +36,13 @@
             return link;
         }
 
+        fileHref() {
+            return `/data/${this.fileLocation}`
+        }
+
         lightboxContent() {
             const iframe = document.createElement('iframe');
-            iframe.src = `/data?hash=${this.fileLocation}`;
+            iframe.src = this.fileHref();
             return iframe;
         }
 
@@ -70,10 +74,10 @@
 
         icon() { return "far fa-file-audio" };
 
-        linkToObject() {
+        viewObject() {
             const audioPlayer = document.createElement("audio");
             audioPlayer.controls = true;
-            audioPlayer.src = `/data?hash=${this.fileLocation}`;
+            audioPlayer.src = this.fileHref();
             audioPlayer.style.zIndex = "-1";
             return audioPlayer;
         };
@@ -90,7 +94,7 @@
 
         lightboxContent() {
             const image = document.createElement('img');
-            image.src = `/data?hash=${this.fileLocation}`;
+            image.src = this.fileHref();
             return image;
         };
     }
@@ -106,7 +110,7 @@
             const video = document.createElement('video');
             video.setAttribute('controls', '');
             const source = document.createElement("source");
-            source.src = `/data?hash=${this.fileLocation}`;
+            source.src = this.fileHref();
             video.appendChild(source);
 
             video.addEventListener('click', function (event) {
@@ -138,7 +142,7 @@
             const thisRef = this;
             const client = new XMLHttpRequest();
 
-            client.open('GET', `/data?hash=${this.fileLocation}`);
+            client.open('GET', this.fileHref());
 
             client.onload = () => {
                 table.innerHTML = thisRef.createTableRowsForCSVContent(client.response);
@@ -205,29 +209,19 @@
     // END CONTENT DATA TYPES
 
     function loadMediaItemInfo() {
-        const textQuery = document.getElementById("searchText").value;
+        const searchText = document.getElementById("searchText").value;
 
-        if (textQuery === "") {
-            runMediaQueryAndPopulateResults("PREFIX schema: <http://schema.org/>\nDESCRIBE ?s WHERE {?s schema:encodingFormat ?o }");
-        } else {
-            const client = new XMLHttpRequest();
+        const sparqlQuery = searchText === "" ?
+            "PREFIX schema: <http://schema.org/>\n" +
+                "CONSTRUCT { ?s ?p ?o . ?o ?p2 ?o2 }\n" +
+                "WHERE { ?s ?p ?o . OPTIONAL { ?o ?p2 ?o2 } . MINUS { ?s schema:description ?o } }" :
+            "PREFIX search: <http://www.openrdf.org/contrib/lucenesail#>\n" +
+                "PREFIX schema: <http://schema.org/>\n" +
+                "CONSTRUCT { ?s ?p ?o . ?o ?p2 ?o2 }\n" +
+                "WHERE { ?s schema:encodingFormat ?h . ?s search:matches [ search:query \"" + searchText + "\" ] . ?s ?p ?o . \n" +
+                "OPTIONAL { ?o ?p2 ?o2 } . MINUS { ?s schema:description ?o } }"
 
-            client.open('GET', "/data?text=" + textQuery);
-
-            client.onload = () => {
-                const files = JSON.parse(client.response)["results"];
-
-                let query = "PREFIX schema: <http://schema.org/>\nDESCRIBE ?s WHERE { { ?s schema:alternateName ?o . VALUES ?o {";
-                for (let i = 0; i < files.length; i++) {
-                    query += " \"" + files[i] + "\" ";
-                }
-                query += "} } UNION {?s schema:encodingFormat ?o . {?s ?a ?b} . FILTER regex(?b, \".*" + textQuery + ".*\", \"i\") } }";
-                runMediaQueryAndPopulateResults(query);
-            };
-
-            client.send();
-        }
-
+        runMediaQueryAndPopulateResults(sparqlQuery)
     }
 
     function runMediaQueryAndPopulateResults(query) {
@@ -248,12 +242,13 @@
         const tbody = document.createElement('tbody');
 
         allMediaItems.forEach(currentMediaItem => {
-            const encodingFormat = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "encodingFormat");
-            if (encodingFormat !== null) {
-                const fileLocation = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "alternateName");
+            const fullEncodingFormat = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "encodingFormat");
+            if (fullEncodingFormat !== null) {
+                const encodingFormat = fullEncodingFormat.split(';')[0]
+                const fileLocation = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "identifier");
                 const name = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "name");
 
-                let contentObject = null;
+                let contentObject;
                 switch (encodingFormat) {
                     case 'audio/mp4':
                         contentObject = new AudioContent(name, fileLocation, encodingFormat);
@@ -287,10 +282,22 @@
                 descriptionTd.innerHTML = contentObject.displayName();
                 descriptionTd.style = 'vertical-align: middle';
                 tr.appendChild(descriptionTd);
+
                 const contentTd = document.createElement('td');
                 contentTd.style = 'vertical-align: middle';
-                contentTd.appendChild(contentObject.linkToObject());
+                contentTd.appendChild(contentObject.viewObject());
                 tr.appendChild(contentTd);
+
+                const downloadTd = document.createElement('td');
+                const downloadLink = document.createElement('a');
+                downloadLink.href = contentObject.fileHref();
+                downloadLink.target = "_blank";
+                const downloadIconContainer = document.createElement('i');
+                downloadIconContainer.className = 'fa-solid fa-arrow-down';
+                downloadLink.appendChild(downloadIconContainer);
+                downloadTd.appendChild(downloadLink);
+                tr.appendChild(downloadTd);
+
                 tbody.appendChild(tr);
             }
         });
@@ -327,6 +334,7 @@
         const formData = new FormData();
         const file = document.getElementById("fileSelector").files[0];
         formData.append(file.name, file);
+        client.setRequestHeader("Last-Modified", new Date(file.lastModified).toUTCString());
         client.send(formData);
     }
 

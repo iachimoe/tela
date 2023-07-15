@@ -1,7 +1,6 @@
 package tela.web
 
-import java.nio.file.{Files, Paths}
-
+import java.nio.file.{Files, Path, Paths}
 import akka.actor.ActorRef
 import akka.stream.Materializer
 import akka.testkit.TestActor.NoAutoPilot
@@ -13,9 +12,9 @@ import play.api.libs.json.Json
 import play.api.mvc.MultipartFormData.FilePart
 import play.api.mvc._
 import play.api.test.FakeRequest
-import tela.web.JSONConversions._
 import tela.web.SessionManager._
 
+import java.time.LocalDateTime
 import scala.jdk.CollectionConverters._
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.reflect.classTag
@@ -87,7 +86,9 @@ class DataControllerSpec extends SessionManagerClientBaseSpec {
     environment.sessionManagerProbe.expectMsg(PublishData(TestSessionId, "[]", TestDataObjectUri))
   }
 
-  "uploadMediaItem" should "store the uploaded data in a temporary file and instruct the session manager to store it" in testEnvironment { (environment, materializer) =>
+  private def uploadMediaItemAndAssertCorrectHandling(environment: TestEnvironment[DataController],
+                                                      materializer: Materializer,
+                                                      rawAndParsedLastModified: (String, Option[LocalDateTime])) = {
     environment.configureTestProbeWithGetSessionHandler(shouldReturnUserData = true, (sender: ActorRef) => {
       case _: StoreMediaItem => NoAutoPilot
     })
@@ -102,7 +103,8 @@ class DataControllerSpec extends SessionManagerClientBaseSpec {
       Vector(FilePart(key = "", filename = filename, contentType = None, ref = testFile)),
       Vector.empty
     )
-    val body = FakeRequest("POST", "/").withCookies(Cookie(SessionIdCookieName, TestSessionIdAsString)).withMultipartFormDataBody(data)
+    val body = FakeRequest("POST", "/").withCookies(Cookie(SessionIdCookieName, TestSessionIdAsString)).withHeaders(
+      LAST_MODIFIED -> rawAndParsedLastModified._1).withMultipartFormDataBody(data)
 
     implicit val mat: Materializer = materializer
     val result = call(environment.client.uploadMediaItem(), body, body.body)
@@ -110,43 +112,81 @@ class DataControllerSpec extends SessionManagerClientBaseSpec {
     environment.sessionManagerProbe.expectMsg(GetSession(TestSessionId))
     val storeMediaItemMessage = environment.sessionManagerProbe.expectMsgType(classTag[StoreMediaItem])
 
-    storeMediaItemMessage.sessionId should === (TestSessionId)
-    storeMediaItemMessage.originalFileName should === (Paths.get(filename))
-    status(result) should === (Status.OK)
+    storeMediaItemMessage.sessionId should ===(TestSessionId)
+    storeMediaItemMessage.originalFileName should ===(Paths.get(filename))
+    storeMediaItemMessage.lastModified should ===(rawAndParsedLastModified._2)
+    status(result) should ===(Status.OK)
     val lines = Files.readAllLines(storeMediaItemMessage.temporaryFileLocation)
-    lines.asScala.toVector should === (Vector(content))
+    lines.asScala.toVector should ===(Vector(content))
+  }
+
+  "uploadMediaItem" should "store the uploaded data in a temporary file and instruct the session manager to store it" in testEnvironment { (environment, materializer) =>
+    uploadMediaItemAndAssertCorrectHandling(environment, materializer, TestDateInHttpHeaderFormat -> Some(TestDateAsLocalDateTime))
+  }
+
+  it should "ignore malformed last modified dates" in testEnvironment { (environment, materializer) =>
+    uploadMediaItemAndAssertCorrectHandling(environment, materializer, "This is not a date string" -> None)
   }
 
   "downloadMediaItem" should "request the path to the file from the session manager and send the file to the client" in testEnvironment { (environment, materializer) =>
-    val testHash = "aaaa"
     val testResponseFile = Paths.get("web/src/test/data/TestApp/index.html")
-
-    environment.configureTestProbeWithGetSessionHandler(shouldReturnUserData = true, (sender: ActorRef) => {
-      case RetrieveMediaItem(TestSessionId, `testHash`) =>
-        sender ! Some(testResponseFile)
-        NoAutoPilot
-    })
-
-    val result = environment.client.downloadMediaItem(testHash).apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionIdAsString)))
-
-    status(result) should === (Status.OK)
-    contentType(result) should === (None)
-    contentAsBytes(result)(GeneralTimeout, materializer).toVector.toArray should === (Files.readAllBytes(testResponseFile))
+    testDownloadMediaItem(Some(testResponseFile), None, Status.OK, Files.readAllBytes(testResponseFile))(environment, materializer)
   }
 
-  it should "return a 404 if the requested file is not found" in testEnvironment { (environment, _) =>
+  it should "return a 404 if the requested file is not found" in testEnvironment { (environment, materializer) =>
+    testDownloadMediaItem(None, None, Status.NOT_FOUND, Array())(environment, materializer)
+  }
+
+  it should "retrieve file from archive" in testEnvironment { (environment, materializer) =>
+    testDownloadMediaItem(Some(Paths.get("web/src/test/data/nestedZip.zip")),
+      Some("outerFolder/innerZip.zip/innerFolder/testTextFile.txt"),
+      Status.OK,
+      Files.readAllBytes(Paths.get("web/src/test/data/testTextFileWithinZip.txt")))(environment, materializer)
+  }
+
+  it should "return 404 for invalid path within archive" in testEnvironment { (environment, materializer) =>
+    testDownloadMediaItem(Some(Paths.get("web/src/test/data/nestedZip.zip")),
+      Some("outerFolder/innerZip.zip/nonExistent/testTextFile.txt"),
+      Status.NOT_FOUND,
+      Array())(environment, materializer)
+  }
+
+  it should "return 404 when path is empty string" in testEnvironment { (environment, materializer) =>
+    testDownloadMediaItem(Some(Paths.get("web/src/test/data/nestedZip.zip")),
+      Some(""),
+      Status.NOT_FOUND,
+      Array())(environment, materializer)
+  }
+
+  it should "return 404 when parent file is not an archive" in testEnvironment { (environment, materializer) =>
+    testDownloadMediaItem(Some(Paths.get("web/src/test/data/TestApp/index.html")),
+      Some("outerFolder/innerZip.zip/innerFolder/testTextFile.txt"),
+      Status.NOT_FOUND,
+      Array())(environment, materializer)
+  }
+
+  it should "return 404 when attempting to retrieve a child of a child that is not an archive" in testEnvironment { (environment, materializer) =>
+    testDownloadMediaItem(Some(Paths.get("web/src/test/data/nestedZip.zip")),
+      Some("outerFolder/innerZip.zip/innerFolder/testTextFile.txt/something"),
+      Status.NOT_FOUND,
+      Array())(environment, materializer)
+  }
+
+  private def testDownloadMediaItem(file: Option[Path], childPath: Option[String], expectedStatusCode: Int, expectedContent: Array[Byte])(environment: TestEnvironment[DataController], materializer: Materializer) = {
     val testHash = "aaaa"
 
     environment.configureTestProbeWithGetSessionHandler(shouldReturnUserData = true, (sender: ActorRef) => {
       case RetrieveMediaItem(TestSessionId, `testHash`) =>
-        sender ! None
+        sender ! file
         NoAutoPilot
     })
 
-    val result = environment.client.downloadMediaItem(testHash).apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionIdAsString)))
+    val downloadEndpoint = childPath.map(child => environment.client.downloadMediaItem(testHash, child)).getOrElse(environment.client.downloadMediaItem(testHash))
+    val result = downloadEndpoint.apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionIdAsString)))
 
-    status(result) should === (Status.NOT_FOUND)
-    contentAsString(result) should === ("")
+    status(result) should ===(expectedStatusCode)
+    contentType(result) should ===(None)
+    contentAsBytes(result)(GeneralTimeout, materializer).toVector.toArray should ===(expectedContent)
   }
 
   "sparqlQuery" should "return the result of the given SPARQL query" in testEnvironment { (environment, _) =>
@@ -161,21 +201,5 @@ class DataControllerSpec extends SessionManagerClientBaseSpec {
     status(result) should === (Status.OK)
     contentType(result) should === (Some(JsonLdContentType))
     contentAsString(result) should === ("[]")
-  }
-
-  "textSearch" should "return the result of the given text search" in testEnvironment { (environment, _) =>
-    val query = "blah"
-
-    environment.configureTestProbeWithGetSessionHandler(shouldReturnUserData = true, (sender: ActorRef) => {
-      case TextSearch(TestSessionId, `query`) =>
-        sender ! TextSearchResult(Vector("result1", "result2"))
-        NoAutoPilot
-    })
-
-    val result = environment.client.textSearch(query).apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionIdAsString)))
-
-    status(result) should === (Status.OK)
-    contentType(result) should === (Some(ContentTypes.JSON))
-    contentAsJson(result) should === (Json.obj(TextSearchResultsKey -> Json.arr("result1", "result2")))
   }
 }

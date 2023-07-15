@@ -1,9 +1,10 @@
 package tela.datastore
 
+import org.apache.commons.text.StringEscapeUtils
+
 import java.net.URI
-import java.nio.file.{Files, Path, Paths, StandardCopyOption}
+import java.nio.file.{Files, Path, StandardCopyOption}
 import java.util.UUID
-import org.apache.lucene.store.AlreadyClosedException
 import org.eclipse.rdf4j.model.impl.{LinkedHashModel, SimpleValueFactory}
 import org.eclipse.rdf4j.model.util.Models
 import org.eclipse.rdf4j.model.vocabulary.{GEO, GEOF, XSD}
@@ -11,32 +12,29 @@ import org.eclipse.rdf4j.rio.RDFFormat
 import org.mockito.ArgumentMatchers._
 import org.mockito.Mockito._
 import org.mockito.{ArgumentMatcher, ArgumentMatchers}
+import org.scalatest.matchers.{MatchResult, Matcher}
 import org.scalatest.matchers.should.Matchers._
 import tela.baseinterfaces.{ComplexObject, XMPPSession}
 
+import java.time.format.DateTimeFormatter
+import java.time.{LocalDateTime, ZoneId}
 import scala.xml._
 
 class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   private val BaseTestDir = TestDataRoot.resolve("store")
   private val NonExistentDataStore = TestDataRoot.resolve("nonExistent")
 
-  private val TestHtmlFileName = Paths.get("testHTMLFile.html")
-  private val TestHtmlFile = TestDataRoot.resolve(TestHtmlFileName)
-  private val HashOfTestHtmlFile = "85b94c9ff01e60d63fa7005bf2c9625f4a437024"
-
-  private val TestTextFileName = Paths.get("testTextFile.txt")
-  private val TestTextFile = TestDataRoot.resolve(TestTextFileName)
-  private val HashOfTestTextFile = "09fac8dbfd27bd9b4d23a00eb648aa751789536d"
-
-  private val TestMP3FileName = Paths.get("testMP3.mp3")
-  private val TestMP3 = TestDataRoot.resolve(TestMP3FileName)
-  private val HashOfTestMP3 = "a82e3d27ec0184d28b0de85a70242e9985213143"
-
-  private val TestUUID = UUID.fromString("00000000-0000-0000-c000-000000000046")
-  private val URNWithTestUUID = new URI(DataStoreConnectionImpl.URNBaseForUUIDs + TestUUID)
-
   private val TestMediaItemsRoot = BaseTestDir.resolve(TestUsername).resolve(DataStoreConnectionImpl.MediaItemsFolderName)
 
+  private val AdditionalTestUUID1 = UUID.fromString("5233899b-ba7e-504f-bb83-ceebac62decf")
+  private val AdditionalTestUUID2 = UUID.fromString("3bda1540-d089-5a1a-8f0d-94eba8068e58")
+  private val AdditionalTestUUID3 = UUID.fromString("e4d2c732-bbc1-5ef4-869f-5007ceb55f6e")
+
+  // This matches the format of dates that RDF4J produces
+  protected val TestDateWithIsoInstantFormat = TestDateAsLocalDateTime.atZone(ZoneId.of("UTC")).format(
+    DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSX"))
+
+  //TODO We should probably stop representing data as JSON-LD strings in tests, it's getting too cumbersome
   private val TestProfileInfoAsJSON = s"""[
                                   |    {
                                   |        "@id": "$TestDataObjectUri",
@@ -62,18 +60,29 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
        |  } ]
        |} ]""".stripMargin
 
+  // Note that the HTML tags are stripped out of the text content
   private val TestHTMLFileMetadataAsJSON = s"""[
                                   |    {
-                                  |        "@id": "$URNWithTestUUID",
+                                  |        "@id": "$URNWithTestUUIDAsURI",
                                   |        "@type": [ "$GenericMediaFileType" ],
                                   |        "$HashPredicate": [
                                   |            {
                                   |                "@value": "$HashOfTestHtmlFile"
                                   |            }
                                   |        ],
+                                  |        "$TextContentPredicate": [
+                                  |            {
+                                  |                "@value": "${fileContentLikeFromTika(11, "Hello")}"
+                                  |            }
+                                  |        ],
+                                  |        "$FileNamePredicate": [
+                                  |            {
+                                  |                "@value": "${TestHtmlFileName.toString}"
+                                  |            }
+                                  |        ],
                                   |        "$FileFormatPredicate": [
                                   |            {
-                                  |                "@value": "$TextHtmlContentType"
+                                  |                "@value": "$TextHtmlContentType; charset=ISO-8859-1"
                                   |            }
                                   |        ]
                                   |    }
@@ -81,11 +90,16 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
 
   private val TestICalFileMetadataAsJSON = s"""[
                                                |    {
-                                               |        "@id": "$URNWithTestUUID",
+                                               |        "@id": "$URNWithTestUUIDAsURI",
                                                |        "@type": [ "$GenericMediaFileType" ],
                                                |        "$HashPredicate": [
                                                |            {
                                                |                "@value": "$HashOfTestIcalFile"
+                                               |            }
+                                               |        ],
+                                               |        "$FileNamePredicate": [
+                                               |            {
+                                               |                "@value": "${TestIcalWithEventFileName.toString}"
                                                |            }
                                                |        ],
                                                |        "$FileFormatPredicate": [
@@ -105,7 +119,7 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   // RDF4J will represent it with a different id internally,
   // but the graph comparison functions seem to be smart enough to
   // recognise when two blank nodes can be considered "equal"
-  private val TestMP3FileMetadataAsJSON = s"""[{
+  private def testMP3FileMetadataAsJSON(id: UUID, hash: String, prefixedNewlines: Int, lastModified: String) = s"""[{
                                   |         "@id" : "_:BLANKNODE",
                                   |         "@type" : [ "http://schema.org/Person" ],
                                   |         "http://schema.org/name" : [ {
@@ -113,7 +127,7 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
                                   |         } ]
                                   |    },
                                   |    {
-                                  |        "@id": "$URNWithTestUUID",
+                                  |        "@id": "${DataStoreConnectionImpl.URNBaseForUUIDs}$id",
                                   |        "@type": [ "$MP3ObjectType" ],
                                   |        "http://schema.org/author": [
                                   |            {
@@ -137,24 +151,56 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
                                   |        ],
                                   |        "$HashPredicate": [
                                   |            {
-                                  |                "@value": "$HashOfTestMP3"
+                                  |                "@value": "$hash"
+                                  |            }
+                                  |        ],
+                                  |        "$FileNamePredicate": [
+                                  |            {
+                                  |                "@value": "${TestMP3FileName.toString}"
+                                  |            }
+                                  |        ],
+                                  |        "http://schema.org/lastModified" : [
+                                  |            {
+                                  |                "@type" : "http://www.w3.org/2001/XMLSchema#dateTime",
+                                  |                "@value" : "$lastModified"
+                                  |            }
+                                  |        ],
+                                  |        "$TextContentPredicate": [
+                                  |            {
+                                  |                "@value": "${fileContentLikeFromTika(prefixedNewlines, "Short, Silent MP3\\n\\nShort, Silent MP3\\ntela\\nRock\\n0.15673469\\nXXX - \\nSmall MP3 for testing tela")}"
                                   |            }
                                   |        ]
                                   |    }
                                   |]""".stripMargin
 
-  private val TestTextFileMetadataAsJSON = s"""[
+  private def testTextFileMetadataAsJSON(id: UUID, hash: String, prefixedNewlines: Int, lastModified: String) = s"""[
                                               |    {
-                                              |        "@id": "$URNWithTestUUID",
+                                              |        "@id": "${DataStoreConnectionImpl.URNBaseForUUIDs}$id",
                                               |        "@type": [ "$GenericMediaFileType" ],
                                               |        "$HashPredicate": [
                                               |            {
-                                              |                "@value": "$HashOfTestTextFile"
+                                              |                "@value": "$hash"
+                                              |            }
+                                              |        ],
+                                              |        "$FileNamePredicate": [
+                                              |            {
+                                              |                "@value": "${TestTextFileName.toString}"
+                                              |            }
+                                              |        ],
+                                              |        "$TextContentPredicate": [
+                                              |            {
+                                              |                "@value": "${fileContentLikeFromTika(prefixedNewlines, escapedFileContent(TestTextFile))}"
                                               |            }
                                               |        ],
                                               |        "$FileFormatPredicate": [
                                               |            {
-                                              |                "@value": "$PlainTextContentType"
+                                              |                "@value": "$PlainTextContentType; charset=ISO-8859-1"
+                                              |            }
+                                              |        ],
+                                              |        "http://schema.org/lastModified" : [
+                                              |            {
+                                              |                "@type" : "http://www.w3.org/2001/XMLSchema#dateTime",
+                                              |                "@value" : "$lastModified"
                                               |            }
                                               |        ],
                                               |        "http://schema.org/name": [
@@ -164,6 +210,69 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
                                               |        ]
                                               |    }
                                               |]""".stripMargin
+
+  private val TestZipFileMetadataAsJSON = s"""[
+                                              |    {
+                                              |        "@id": "$URNWithTestUUIDAsURI",
+                                              |        "@type": [ "$GenericMediaFileType" ],
+                                              |        "$HashPredicate": [
+                                              |            {
+                                              |                "@value": "$HashOfTestZipFile"
+                                              |            }
+                                              |        ],
+                                              |        "$FileNamePredicate": [
+                                              |            {
+                                              |                "@value": "${TestZipFileName.toString}"
+                                              |            }
+                                              |        ],
+                                              |        "$FileFormatPredicate": [
+                                              |            {
+                                              |                "@value": "$ZipFileContentType"
+                                              |            }
+                                              |        ],
+                                              |        "$TextContentPredicate": [
+                                              |            {
+                                              |                "@value": "${
+                                                      fileContentLikeFromTika(10, s"music/$TestMP3FileName") +
+                                                        fileContentLikeFromTika(2, "testTextFile.zip") + "\\n"
+                                                    }"
+                                              |            }
+                                              |        ]
+                                              |    }
+                                              |]""".stripMargin
+
+  private val TestInnerZipFileMetadataAsJSON = s"""[
+                                             |    {
+                                             |        "@id": "${DataStoreConnectionImpl.URNBaseForUUIDs}$AdditionalTestUUID3",
+                                             |        "@type": [ "$GenericMediaFileType" ],
+                                             |        "$FileNamePredicate": [
+                                             |            {
+                                             |                "@value": "testTextFile.zip"
+                                             |            }
+                                             |        ],
+                                             |        "$FileFormatPredicate": [
+                                             |            {
+                                             |                "@value": "$ZipFileContentType"
+                                             |            }
+                                             |        ],
+                                             |        "$TextContentPredicate": [
+                                             |            {
+                                             |                "@value": "${fileContentLikeFromTika(15, s"$TestTextFileName\\n")}"
+                                             |            }
+                                             |        ],
+                                             |        "http://schema.org/lastModified" : [
+                                             |            {
+                                             |                "@type" : "http://www.w3.org/2001/XMLSchema#dateTime",
+                                             |                "@value" : "2022-07-22T12:57:01.000Z"
+                                             |            }
+                                             |        ],
+                                             |        "$HashPredicate": [
+                                             |            {
+                                             |                "@value": "$HashOfTestZipFile/testTextFile.zip"
+                                             |            }
+                                             |        ]
+                                             |    }
+                                             |]""".stripMargin
 
   private val TestProfileInfoAsXML = <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
     <rdf:Description rdf:about={TestDataObjectUri.toString}>
@@ -180,9 +289,15 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
     recursiveDelete(NonExistentDataStore)
 
     val xmppSession = mock[XMPPSession]
+
+    var uuids = Vector(TestUUID, AdditionalTestUUID1, AdditionalTestUUID2, AdditionalTestUUID3)
     val connection = DataStoreConnectionImpl.getDataStore(BaseTestDir, TestUsername, GenericFileDataMap,
       Map(MP3ContentType -> MP3FileDataMap, ICalContentType -> ICalDataMap, PlainTextContentType -> PlainTextDataMap),
-      xmppSession, TestTikaConfigFile, () => TestUUID)
+      xmppSession, TestTikaConfigFile, () => {
+        val result = uuids.head
+        uuids = uuids.tail
+        result
+      })
 
     try {
       runTest(new TestEnvironment(connection, xmppSession))
@@ -195,7 +310,6 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
     connection.closeConnection()
     connection.connection.isOpen should === (false)
     connection.repository.isInitialized should === (false)
-    connection.luceneIndexReader.getRefCount should === (0)
   }
 
   "getDataStore" should "throw an IllegalArgumentException for a non-existent data store" in testEnvironment { environment =>
@@ -205,13 +319,13 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   }
 
   "retrieveJson" should "return an empty array when an arbitrary URI is requested from an empty store" in testEnvironment { environment =>
-    assertJSONGraphsAreEqual("[]", environment.connection.retrieveJSON(TestDataObjectUri))
+    environment.connection.retrieveJSON(TestDataObjectUri) should beJSONLDEquivalentTo("[]")
   }
 
   it should "retrieve the same JSONLD graph that was inserted when the URI of that graph is requested" in testEnvironment { environment =>
     environment.connection.insertJSON(TestProfileInfoAsJSON)
-    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, environment.connection.retrieveJSON(TestDataObjectUri))
-    assertJSONGraphsAreEqual("[]", environment.connection.retrieveJSON(new URI("http://tela/nonExistant")))
+    environment.connection.retrieveJSON(TestDataObjectUri) should beJSONLDEquivalentTo(TestProfileInfoAsJSON)
+    environment.connection.retrieveJSON(new URI("http://tela/nonExistant")) should beJSONLDEquivalentTo("[]")
   }
 
   it should "not retrieve unrelated data" in testEnvironment { environment =>
@@ -224,7 +338,7 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
 
     environment.connection.insertJSON(TestProfileInfoAsJSON)
     environment.connection.insertJSON(otherPerson)
-    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, environment.connection.retrieveJSON(TestDataObjectUri))
+    environment.connection.retrieveJSON(TestDataObjectUri) should beJSONLDEquivalentTo(TestProfileInfoAsJSON)
   }
 
   "insertJson" should "overwrite old content when new content is inserted with a pre-existing URI" in testEnvironment { environment =>
@@ -247,7 +361,7 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
 
     environment.connection.insertJSON(alternateData)
     environment.connection.insertJSON(TestProfileInfoAsJSON)
-    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, environment.connection.retrieveJSON(TestDataObjectUri))
+    environment.connection.retrieveJSON(TestDataObjectUri) should beJSONLDEquivalentTo(TestProfileInfoAsJSON)
   }
 
   "publish" should "publish given URI in XML format via XMPP" in testEnvironment { environment =>
@@ -260,58 +374,81 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   "getPublishedData" should "retrieve published data from XMPPSession and return response as JSON" in testEnvironment { environment =>
     when(environment.xmppSession.getPublishedData(TestUsername, TestDataObjectUri)).thenReturn(TestProfileInfoAsXML.toString)
 
-    assertJSONGraphsAreEqual(TestProfileInfoAsJSON, environment.connection.retrievePublishedDataAsJSON(TestUsername, TestDataObjectUri))
+    environment.connection.retrievePublishedDataAsJSON(TestUsername, TestDataObjectUri) should beJSONLDEquivalentTo(TestProfileInfoAsJSON)
   }
 
   "storeMediaItem" should "place contents of temporary file in data store with correct hash and remove temporary file" in testEnvironment { environment =>
-    val tempFile = createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection)
+    val tempFile = createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, None, environment.connection)
     TestMediaItemsRoot.resolve(HashOfTestHtmlFile).toFile.exists() should === (true)
     Files.exists(tempFile) should === (false)
   }
 
   it should "be able to store multiple files" in testEnvironment { environment =>
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection)
-    createTempFileAndStoreContent(TestMP3, TestMP3FileName, environment.connection)
-    createTempFileAndStoreContent(TestMP3, TestMP3FileName, environment.connection) //verifying that storing the same file twice won't cause an exception
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, None, environment.connection)
+    createTempFileAndStoreContent(TestMP3, TestMP3FileName, None, environment.connection)
+    createTempFileAndStoreContent(TestMP3, TestMP3FileName, None, environment.connection) //verifying that storing the same file twice won't cause an exception
 
     TestMediaItemsRoot.resolve(HashOfTestHtmlFile).toFile.exists() should === (true)
     TestMediaItemsRoot.resolve(HashOfTestMP3).toFile.exists() should === (true)
   }
 
-  "retrieveMediaItem" should "return the absolute path if the requested file if it exists in the data store" in testEnvironment { environment =>
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection)
+  it should "store UUID, hash and file format of media items in RDF store" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, None, environment.connection)
+    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beJSONLDEquivalentTo(TestHTMLFileMetadataAsJSON)
+  }
+
+  it should "store metadata from MP3 file in RDF store" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestMP3, TestMP3FileName, Some(TestDateAsLocalDateTime), environment.connection)
+    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beJSONLDEquivalentTo(
+      testMP3FileMetadataAsJSON(TestUUID, HashOfTestMP3, 22, TestDateWithIsoInstantFormat))
+  }
+
+  it should "extract appropriate metadata from ical content" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestIcalFileWithEvent, TestIcalWithEventFileName, None, environment.connection)
+    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beJSONLDEquivalentTo(TestICalFileMetadataAsJSON)
+  }
+
+  it should "store filename and last modified date" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestTextFile, TestTextFileName, Some(TestDateAsLocalDateTime), environment.connection)
+    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beJSONLDEquivalentTo(
+      testTextFileMetadataAsJSON(TestUUID, HashOfTestTextFile, 11, TestDateWithIsoInstantFormat))
+  }
+
+  it should "extract metadata for all contents in a compound file format and index text" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestZipFile, TestZipFileName, None, environment.connection)
+    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beJSONLDEquivalentTo(TestZipFileMetadataAsJSON)
+    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID1)) should beJSONLDEquivalentTo(
+      testMP3FileMetadataAsJSON(AdditionalTestUUID1, s"$HashOfTestZipFile/music/$TestMP3FileName", 26, "2022-07-20T08:22:00.000Z"))
+    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID2)) should beJSONLDEquivalentTo(
+      testTextFileMetadataAsJSON(AdditionalTestUUID2, s"$HashOfTestZipFile/testTextFile.zip/$TestTextFileName", 15, "2022-07-20T08:22:00.000Z"))
+    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID3)) should beJSONLDEquivalentTo(TestInnerZipFileMetadataAsJSON)
+  }
+
+  "retrieveMediaItem" should "return the absolute path of the requested file if it exists in the data store" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, None, environment.connection)
     environment.connection.retrieveMediaItem(HashOfTestHtmlFile) should === (Some(TestMediaItemsRoot.resolve(HashOfTestHtmlFile)))
   }
 
   it should "return None for a non-existent media item" in testEnvironment { environment =>
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection) //adding this file to ensure that data store exists
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, None, environment.connection) //adding this file to ensure that data store exists
     environment.connection.retrieveMediaItem("notARealHash") should === (None)
   }
 
-  it should "prohibit attempts to retreive files from other folders" in testEnvironment { environment =>
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection) //adding this file to ensure that data store exists
+  it should "prohibit attempts to retrieve files from other folders" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, None, environment.connection) //adding this file to ensure that data store exists
     environment.connection.retrieveMediaItem("../../.gitignore") should === (None)
-  }
-
-  it should "store UUID, hash and file format of media items in RDF store" in testEnvironment { environment =>
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection)
-    assertJSONGraphsAreEqual(TestHTMLFileMetadataAsJSON, environment.connection.retrieveJSON(URNWithTestUUID))
-  }
-
-  it should "store metadata from MP3 file in RDF store" in testEnvironment { environment =>
-    createTempFileAndStoreContent(TestMP3, TestMP3FileName, environment.connection)
-    assertJSONGraphsAreEqual(TestMP3FileMetadataAsJSON, environment.connection.retrieveJSON(URNWithTestUUID))
   }
 
   "runSPARQLQuery" should "return empty array for query against empty repository" in testEnvironment { environment =>
     environment.connection.runSPARQLQuery(WildcardSparqlQuery) should === ("[ ]")
   }
 
-  it should "return data in JSONLD format" in testEnvironment { environment =>
+  it should "handle full text search queries" in testEnvironment { environment =>
     environment.connection.insertJSON(TestProfileInfoAsJSON)
 
-    val result = environment.connection.runSPARQLQuery("PREFIX foaf: <http://xmlns.com/foaf/0.1/>\n" +
-      "CONSTRUCT { ?s foaf:familyName ?o } WHERE {?s foaf:familyName ?o}")
+    val result = environment.connection.runSPARQLQuery("PREFIX search: <http://www.openrdf.org/contrib/lucenesail#>\n" +
+      "PREFIX foaf: <http://xmlns.com/foaf/0.1/>\n" +
+      "CONSTRUCT { } WHERE { ?s foaf:familyName ?o . ?s search:matches [ search:query \"bar\" ] }")
 
     result should === (TestFamilyNameFromProfileInfo)
   }
@@ -335,38 +472,28 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
         "DESCRIBE ?subject where { ?subject geo:asWKT ?object . filter(geof:distance(\"POINT (2.2950 48.8738)\"^^geo:wktLiteral, ?object, uom:metre) < \"500.0\"^^xsd:double) }"
 
     val result: String = environment.connection.runSPARQLQuery(placesNearArcDeTriompheQuery)
-    assertJSONGraphsAreEqual(graphWithRestaurantAsJson, result)
+    result should beJSONLDEquivalentTo(graphWithRestaurantAsJson)
   }
 
-  it should "extract appropriate metadata from ical content" in testEnvironment { environment =>
-    createTempFileAndStoreContent(TestIcalFileWithEvent, TestIcalWithEventFileName, environment.connection)
-    assertJSONGraphsAreEqual(TestICalFileMetadataAsJSON, environment.connection.retrieveJSON(URNWithTestUUID))
-  }
-
-  it should "store filename" in testEnvironment { environment =>
-    createTempFileAndStoreContent(TestTextFile, TestTextFileName, environment.connection)
-    assertJSONGraphsAreEqual(TestTextFileMetadataAsJSON, environment.connection.retrieveJSON(URNWithTestUUID))
-  }
-
-  it should "index text which is then searchable by means of textSearch method" in testEnvironment { environment =>
-    createTempFileAndStoreContent(TestTextFile, TestTextFileName, environment.connection)
-    environment.connection.textSearch("hello") should === (Vector(HashOfTestTextFile))
-
-    createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, environment.connection)
-    environment.connection.textSearch("hello").sortBy(s => s) should === (Vector(HashOfTestTextFile, HashOfTestHtmlFile).sortBy(s => s))
-
-    environment.connection.textSearch("world") should === (Vector(HashOfTestTextFile))
-  }
-
-  private def createTempFileAndStoreContent(path: Path, originalFileName: Path, connection: DataStoreConnectionImpl): Path = {
+  private def createTempFileAndStoreContent(path: Path,
+                                            originalFileName: Path,
+                                            lastModified: Option[LocalDateTime],
+                                            connection: DataStoreConnectionImpl): Path = {
     val tempFile = Files.createTempFile("aaa", "")
     Files.copy(path, tempFile, StandardCopyOption.REPLACE_EXISTING)
-    connection.storeMediaItem(tempFile, originalFileName)
+    connection.storeMediaItem(tempFile, originalFileName, lastModified)
     tempFile
   }
 
-  private def assertJSONGraphsAreEqual(expected: String, actual: String): Unit = {
-    Models.isomorphic(getJSONAsRDFModel(actual), getJSONAsRDFModel(expected)) should === (true)
+  private def beJSONLDEquivalentTo(expectedValue: String) = {
+    new Matcher[String]() {
+      override def apply(left: String): MatchResult = {
+        MatchResult(
+          Models.isomorphic(getJSONAsRDFModel(expectedValue), getJSONAsRDFModel(left)),
+          s"""Expected $expectedValue, but got $left""",
+          s"""Got the expected value $expectedValue""")
+      }
+    }
   }
 
   private def getJSONAsRDFModel(json: String): LinkedHashModel = {
@@ -377,6 +504,16 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
     if (Files.isDirectory(file))
       Files.list(file).forEach(child => recursiveDelete(child))
     Files.deleteIfExists(file)
+  }
+
+  //TODO Sadly tika is a little funny putting these newlines all over the place
+  //Probably the best thing to do going forward is to just strip out leading/trailing newlines
+  //in the production code before indexing the text, but let's wait and see how tika evolves in future versions
+  private def fileContentLikeFromTika(prefixedNewlines: Int, content: String) =
+    "\\n".repeat(prefixedNewlines) + content + "\\n"
+
+  private def escapedFileContent(file: Path) = {
+    StringEscapeUtils.escapeJava(new String(Files.readAllBytes(file)))
   }
 
   private class XMLMatcher(private val expected: Elem) extends ArgumentMatcher[String] {

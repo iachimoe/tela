@@ -9,6 +9,8 @@ import tela.baseinterfaces._
 import tela.web.JSONConversions._
 import tela.web.SessionManager._
 
+import java.time.LocalDateTime
+
 object SessionManager {
 
   case class Login(username: String, password: String, preferredLanguage: String)
@@ -43,13 +45,11 @@ object SessionManager {
 
   case class SendChatMessage(sessionId: UUID, user: String, data: String)
 
-  case class StoreMediaItem(sessionId: UUID, temporaryFileLocation: Path, originalFileName: Path)
+  case class StoreMediaItem(sessionId: UUID, temporaryFileLocation: Path, originalFileName: Path, lastModified: Option[LocalDateTime])
 
   case class RetrieveMediaItem(sessionId: UUID, hash: String)
 
   case class SPARQLQuery(sessionId: UUID, query: String)
-
-  case class TextSearch(sessionId: UUID, query: String)
 
   case class PushContactListInfoToWebSockets(sessionId: UUID, contacts: AddContacts)
 
@@ -88,10 +88,9 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
     case RetrievePublishedData(sessionId, user, uri) => retrievePublishedData(sessionId, user, uri)
     case SendCallSignal(sessionId, user, data) => sendCallSignal(sessionId, user, data)
     case SendChatMessage(sessionId, user, message) => sendChatMessage(sessionId, user, message)
-    case StoreMediaItem(sessionId, fileLocation, originalFileName) => storeMediaItem(sessionId, fileLocation, originalFileName)
+    case StoreMediaItem(sessionId, fileLocation, originalFileName, lastModified) => storeMediaItem(sessionId, fileLocation, originalFileName, lastModified)
     case RetrieveMediaItem(sessionId, hash) => retrieveMediaItem(sessionId, hash)
     case SPARQLQuery(sessionId, query) => runSPARQLQuery(sessionId, query)
-    case TextSearch(sessionId, query) => runTextSearch(sessionId, query)
     //The following messages are expected to be received from the session listener
     case PushCallSignalToWebSockets(sessionId, callSignalReceipt) => pushCallSignalToWebSockets(sessionId, callSignalReceipt)
     case PushChatMessageToWebSockets(sessionId, chatMessageReceipt) => pushChatMessageToWebSockets(sessionId, chatMessageReceipt)
@@ -114,11 +113,6 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
   private def runSPARQLQuery(sessionId: UUID, query: String): Unit = {
     log.debug("Running SPARQL query {} for user with session {}", query, sessionId)
     sender ! sessions(sessionId).dataStoreConnection.runSPARQLQuery(query)
-  }
-
-  private def runTextSearch(sessionId: UUID, query: String): Unit = {
-    log.debug("Running text search {} for user with session {}", query, sessionId)
-    sender ! TextSearchResult(sessions(sessionId).dataStoreConnection.textSearch(query))
   }
 
   private def retrievePublishedData(sessionId: UUID, user: String, uri: URI): Unit = {
@@ -146,9 +140,9 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
     sender ! sessions(sessionId).xmppSession.changePassword(oldPassword, newPassword)
   }
 
-  private def storeMediaItem(sessionId: UUID, fileLocation: Path, originalFileName: Path): Unit = {
+  private def storeMediaItem(sessionId: UUID, fileLocation: Path, originalFileName: Path, lastModified: Option[LocalDateTime]): Unit = {
     log.debug("Storing media item for user with session {}", sessionId)
-    sessions(sessionId).dataStoreConnection.storeMediaItem(fileLocation, originalFileName)
+    sessions(sessionId).dataStoreConnection.storeMediaItem(fileLocation, originalFileName, lastModified)
   }
 
   private def retrieveMediaItem(sessionId: UUID, hash: String): Unit = {
