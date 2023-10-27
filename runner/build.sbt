@@ -1,6 +1,6 @@
 name := "runner"
 
-libraryDependencies += "com.typesafe.play" %% "play-guice" % "2.8.19"
+libraryDependencies += "com.typesafe.play" %% "play-guice" % "2.9.0"
 
 //TODO This is not nice right now. Have to explicitly run sbt compile before
 //running in dev environment to make sure deps are picked up
@@ -23,4 +23,4 @@ packageWebDeps := {
 enablePlugins(AshScriptPlugin)
 Docker / packageName := "tela"
 dockerBuildOptions += "--no-cache"
-dockerBaseImage := "eclipse-temurin:11-alpine"
+dockerBaseImage := "eclipse-temurin:17-alpine"

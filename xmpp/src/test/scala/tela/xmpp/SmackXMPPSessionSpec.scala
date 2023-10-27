@@ -32,8 +32,10 @@ import org.scalatest.OptionValues
 import tela.baseinterfaces._
 import tela.xmpp.SmackXMPPSession.{CallSignal, CallSignalElementName, DefaultPriority, DefaultStatusText, TelaURN}
 
+import scala.concurrent.Await
 import scala.jdk.CollectionConverters._
 import scala.xml.{Elem, NodeSeq, XML}
+import scala.concurrent.ExecutionContext.global
 
 //TODO Smack seems to be getting harder to test with each successive version.
 //Using PowerMockito to more effectively mock AbstractXMPPConnection may be the most practical solution
@@ -80,32 +82,36 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
   }
 
   "disconnect" should "disconnect underlying session" in testEnvironment { environment =>
-    connectToServerAndGetSession(environment.connection, environment.sessionListener).disconnect()
+    Await.result(connectToServerAndGetSession(environment.connection, environment.sessionListener).disconnect(), TestAwaitTimeout)
     verify(environment.connection).disconnect()
   }
 
   "setPresence" should "set presence to available when requested" in testEnvironment { environment =>
     val session = connectToServerAndGetSession(environment.connection, environment.sessionListener)
-    session.setPresence(tela.baseinterfaces.Presence.Available)
+    setPresence(tela.baseinterfaces.Presence.Available, session)
     verifyPresencePacketSent(environment.connection, createSmackPresence(Presence.Mode.available))
   }
 
   it should "set presence to away when requested" in testEnvironment { environment =>
     val session = connectToServerAndGetSession(environment.connection, environment.sessionListener)
-    session.setPresence(tela.baseinterfaces.Presence.Away)
+    setPresence(tela.baseinterfaces.Presence.Away, session)
     verifyPresencePacketSent(environment.connection, createSmackPresence(Presence.Mode.away))
   }
 
   it should "set presence to DND when requested" in testEnvironment { environment =>
     val session = connectToServerAndGetSession(environment.connection, environment.sessionListener)
-    session.setPresence(tela.baseinterfaces.Presence.DoNotDisturb)
+    setPresence(tela.baseinterfaces.Presence.DoNotDisturb, session)
     verifyPresencePacketSent(environment.connection, createSmackPresence(Presence.Mode.dnd))
   }
 
   it should "ignore request to set presence to Unknown" in testEnvironment { environment =>
     val session = connectToServerAndGetSession(environment.connection, environment.sessionListener)
-    session.setPresence(tela.baseinterfaces.Presence.Unknown)
+    setPresence(tela.baseinterfaces.Presence.Unknown, session)
     verify(environment.connection, never()).sendStanzaInternal(any())
+  }
+
+  private def setPresence(presence: tela.baseinterfaces.Presence, session: XMPPSession): Unit = {
+    Await.result(session.setPresence(presence), TestAwaitTimeout)
   }
 
   "changePassword" should "create a second connection to test old password and then use it to change the password" in testEnvironment { environment =>
@@ -125,7 +131,8 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
     doReturn(packetCollector).when(changePasswordConnection).createStanzaCollectorAndSend(
       isA(classOf[StanzaFilter]), argThat(new RegistrationMatcher(expectedRegistrationPacket)))
 
-    session.asInstanceOf[SmackXMPPSession].changePassword(TestPassword, TestNewPassword, changePasswordConnection) should === (true)
+    Await.result(session.asInstanceOf[SmackXMPPSession].changePassword(TestPassword, TestNewPassword, changePasswordConnection),
+      TestAwaitTimeout) should === (true)
 
     verify(changePasswordConnection).connect()
     verify(changePasswordConnection).login(TestUsername, TestPassword, Resourcepart.from(SmackXMPPSession.ChangePasswordResource))
@@ -141,17 +148,20 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
       new SASLErrorException("", new SASLFailure(SASLError.not_authorized.toString))
     )
 
-    session.asInstanceOf[SmackXMPPSession].changePassword(TestPassword, TestNewPassword, changePasswordConnection) should === (false)
+    Await.result(session.asInstanceOf[SmackXMPPSession].changePassword(TestPassword, TestNewPassword, changePasswordConnection),
+      TestAwaitTimeout) should === (false)
     verify(changePasswordConnection).disconnect()
   }
 
   it should "not change password and return false if new password is empty string" in testEnvironment { environment =>
     val session = connectToServerAndGetSession(environment.connection, environment.sessionListener)
     val changePasswordConnection = mock[TestableXMPPConnection]
-    session.asInstanceOf[SmackXMPPSession].changePassword(TestPassword, "", changePasswordConnection) should === (false)
+    Await.result(session.asInstanceOf[SmackXMPPSession].changePassword(TestPassword, "", changePasswordConnection),
+      TestAwaitTimeout) should === (false)
     verify(changePasswordConnection).disconnect()
   }
 
+  //TODO This fails intermittently, might be some kind of race condition in Smack
   "getContactList" should "send the user's contacts and self presence to the session listener" in testEnvironment { environment =>
     val session = createSessionWithUsername(environment.connection, environment.sessionListener)
 
@@ -165,25 +175,26 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
     val stanzaListener = getValueFromArgumentCaptor(packetListenerCaptor, 0)
 
     sendContactAddedEventToHandler(contactListRequestHandler, TestContact1)
-    val presence: Presence = createSmackPresence(Presence.Mode.away)
-    presence.setFrom(JidCreate.bareFrom(TestContact1))
-    stanzaListener.processStanza(presence)
+    sendPresenceToStanzaListener(stanzaListener, TestContact1, Presence.Mode.away)
 
     sendContactAddedEventToHandler(contactListRequestHandler, TestContact2)
-    presence.setFrom(JidCreate.bareFrom(TestContact2))
-    stanzaListener.processStanza(presence)
+    sendPresenceToStanzaListener(stanzaListener, TestContact2, Presence.Mode.away)
 
-    val selfPresence = createSmackPresence(Presence.Mode.dnd)
-    selfPresence.setFrom(JidCreate.bareFrom(TestBareJid))
-    stanzaListener.processStanza(selfPresence)
+    sendPresenceToStanzaListener(stanzaListener, TestBareJid, Presence.Mode.dnd)
 
     reset(environment.sessionListener) //Need to do this to ensure the calls to add the contacts in the first place don't interfere with results
 
-    session.getContactList()
+    Await.result(session.getContactList(), TestAwaitTimeout)
 
     //It seems that the order that the contacts come back in depends on the precise content of the JIDs. Changing the values of the test contacts may change the order
     verify(environment.sessionListener).contactsAdded(Vector(ContactInfo(TestContact1, tela.baseinterfaces.Presence.Away), ContactInfo(TestContact2, tela.baseinterfaces.Presence.Away)))
     verify(environment.sessionListener).selfPresenceChanged(tela.baseinterfaces.Presence.DoNotDisturb)
+  }
+
+  private def sendPresenceToStanzaListener(stanzaListener: StanzaListener, bareJid: String, mode: Presence.Mode): Unit = {
+    val presence = createSmackPresence(mode)
+    presence.setFrom(JidCreate.bareFrom(bareJid))
+    stanzaListener.processStanza(presence)
   }
 
   "presenceChanged" should "set the user's presence to the given value" in testEnvironment { environment =>
@@ -227,7 +238,7 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
     when(contactsConnection.createStanzaCollectorAndSend(argThat(new IQPacketMatcher(expectedRosterPacket)))).thenReturn(
       stanzaCollector
     )
-    session.addContact(TestContact1)
+    Await.result(session.addContact(TestContact1), TestAwaitTimeout)
 
     verify(contactsConnection).createStanzaCollectorAndSend(argThat(new IQPacketMatcher(expectedRosterPacket)))
   }
@@ -237,14 +248,14 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
     val contactsConnection = mock[XMPPConnection]
     when(contactsConnection.isAuthenticated).thenReturn(true)
     when(contactsConnection.isConnected).thenReturn(true)
-    when(contactsConnection.getReplyTimeout).thenReturn(2000)
+    when(contactsConnection.getReplyTimeout).thenReturn(2000L)
     val stanzaFactory = new StanzaFactory(new StandardStanzaIdSource())
     when(contactsConnection.getStanzaFactory).thenReturn(stanzaFactory)
 
     // The Roster.reload method sends an empty RosterPacket and expects to get a future back
     when(contactsConnection.sendIqRequestAsync(any())).thenReturn(new SmackFuture[IQ, Exception] {})
 
-    new SmackXMPPSession(contactsConnection, mock[XMPPSessionListener], TestXMPPSettings) -> contactsConnection
+    new SmackXMPPSession(contactsConnection, mock[XMPPSessionListener], TestXMPPSettings, global) -> contactsConnection
   }
 
   "contact added packet in underlying connection" should "trigger contactAdded event on session listener" in testEnvironment { environment =>
@@ -308,14 +319,14 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
 
   "sendCallSignal" should "send CallSignal packet to underlying connection" in testEnvironment { environment =>
     val session = connectToServerAndGetSession(environment.connection, environment.sessionListener)
-    session.sendCallSignal(s"$TestBareJid/${SmackXMPPSession.DefaultResourceName}", TestCallSignalData)
+    Await.result(session.sendCallSignal(s"$TestBareJid/${SmackXMPPSession.DefaultResourceName}", TestCallSignalData), TestAwaitTimeout)
     val signal: CallSignal = createCallSignal(TestCallSignalData, s"$TestBareJid/${SmackXMPPSession.DefaultResourceName}", Type.set)
     verify(environment.connection).sendStanzaInternal(argThat(new IQPacketMatcher(signal)))
   }
 
   it should "append resource name if bare JID is supplied" in testEnvironment { environment =>
     val session = connectToServerAndGetSession(environment.connection, environment.sessionListener)
-    session.sendCallSignal(TestBareJid, TestCallSignalData)
+    Await.result(session.sendCallSignal(TestBareJid, TestCallSignalData), TestAwaitTimeout)
     val signal: CallSignal = createCallSignal(TestCallSignalData, s"$TestBareJid/${SmackXMPPSession.DefaultResourceName}", Type.set)
     verify(environment.connection).sendStanzaInternal(argThat(new IQPacketMatcher(signal)))
   }
@@ -346,7 +357,7 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
 
   "sendChatMessage" should "send appropriately formed chat message to underlying connection" in testEnvironment { environment =>
     val session = connectToServerAndGetSession(environment.connection, environment.sessionListener)
-    session.sendChatMessage(TestBareJid, TestChatMessage)
+    Await.result(session.sendChatMessage(TestBareJid, TestChatMessage), TestAwaitTimeout)
     val message: Message = createChatMessageBuilder().setBody(TestChatMessage).to(TestBareJid).build()
     verify(environment.connection).sendStanzaInternal(argThat(new ChatMessagePacketMatcher(message)))
   }
@@ -444,7 +455,7 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
   }
 
   private def connectToServer(connection: TestableXMPPConnection, sessionListener: XMPPSessionListener): Either[LoginFailure, XMPPSession] = {
-    SmackXMPPSession.connectToServer(TestUsername, TestPassword, connection, TestXMPPSettings, sessionListener)
+    Await.result(SmackXMPPSession.connectToServer(TestUsername, TestPassword, connection, TestXMPPSettings, sessionListener, global), TestAwaitTimeout)
   }
 
   private def connectToServerAndGetSession(connection: TestableXMPPConnection, sessionListener: XMPPSessionListener): XMPPSession = {
@@ -456,41 +467,28 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
   }
 
   private class ChatMessagePacketMatcher(private val expected: Message) extends ArgumentMatcher[Message] {
-    override def matches(argument: Message): Boolean = {
-      argument match {
-        case actual: Message =>
-          expected.getTo == actual.getTo && expected.getBody == actual.getBody
-        case _ => false
-      }
-    }
+    override def matches(actual: Message): Boolean = expected.getTo == actual.getTo && expected.getBody == actual.getBody
   }
 
   private class IQPacketMatcher(private val expected: IQ) extends ArgumentMatcher[IQ] {
-    override def matches(argument: IQ): Boolean = argument match {
-      case actual: IQ =>
-        expected.getTo == actual.getTo && expected.getType == actual.getType &&
-          XML.loadString(expected.getChildElementXML.toString) == XML.loadString(actual.getChildElementXML.toString)
-      case _ => false
-    }
+    override def matches(actual: IQ): Boolean =
+      expected.getTo == actual.getTo &&
+        expected.getType == actual.getType &&
+        XML.loadString(expected.getChildElementXML.toString) == XML.loadString(actual.getChildElementXML.toString)
   }
 
   private class RegistrationMatcher(private val expected: Registration) extends ArgumentMatcher[Registration] {
-    override def matches(argument: Registration): Boolean = argument match {
-        case actual: Registration =>
-          expected.getType == actual.getType && expected.getAttributes.asScala == actual.getAttributes.asScala
-        case _ => false
-    }
+    override def matches(actual: Registration): Boolean =
+      expected.getType == actual.getType && expected.getAttributes.asScala == actual.getAttributes.asScala
   }
 
   private class PresenceMatcher(private val expected: Presence) extends ArgumentMatcher[Presence] {
-    override def matches(argument: Presence): Boolean = argument match {
-      case actual: Presence => expected.getType == actual.getType &&
+    override def matches(actual: Presence): Boolean =
+      expected.getType == actual.getType &&
         expected.getMode == actual.getMode &&
         expected.getStatus == actual.getStatus &&
         expected.getPriority == actual.getPriority &&
         expected.getFrom == actual.getFrom &&
         expected.getTo == actual.getTo
-      case _ => false
-    }
   }
 }

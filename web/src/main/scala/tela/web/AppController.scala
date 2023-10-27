@@ -12,7 +12,7 @@ class AppController @Inject()(userAction: UserAction,
                               controllerComponents: ControllerComponents,
                               assetsFinder: AssetsFinder
                              ) extends AbstractController(controllerComponents) with Logging {
-  def app(name: String): Action[AnyContent] = userAction { request: UserRequest[AnyContent] =>
+  def app(name: String): Action[AnyContent] = userAction { (request: UserRequest[AnyContent]) =>
     logger.info(s"User ${request.sessionData.userData.username} requesting app $name")
     val appDir = appsRootDirectory.resolve(name)
     val mainFile = appDir.resolve(IndexPage)

@@ -18,7 +18,14 @@ import scala.concurrent.ExecutionContext
 object SettingsController {
   case class ChangePasswordRequest(oldPassword: String, newPassword: String)
 
+  object ChangePasswordRequest {
+    def unapply(r: ChangePasswordRequest): Option[(String, String)] = Some(r.oldPassword, r.newPassword)
+  }
   case class Language(code: String)
+
+  object Language {
+    def unapply(l: Language): Option[String] = Some(l.code)
+  }
 }
 
 class SettingsController @Inject()(

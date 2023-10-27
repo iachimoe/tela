@@ -2,11 +2,11 @@ package tela.web
 
 import java.nio.file.{Path, Paths}
 import java.util.UUID
-
 import akka.actor.SupervisorStrategy.Resume
 import akka.actor.{Actor, ActorRef, ActorSystem, OneForOneStrategy, Props, SupervisorStrategy}
 import akka.pattern.ask
 import akka.testkit.{TestActorRef, TestProbe}
+import com.typesafe.config.ConfigFactory
 import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
@@ -16,7 +16,7 @@ import tela.baseinterfaces._
 import tela.web.JSONConversions._
 import tela.web.SessionManager._
 
-import scala.concurrent.Await
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.postfixOps
 import scala.reflect.ClassTag
 
@@ -40,11 +40,11 @@ class SessionManagerSpec extends WebBaseSpec {
       }
 
       override def receive: Receive = {
-        case anything => sender ! anything
+        case anything => sender() ! anything
       }
     }
 
-    implicit val actorSystem = ActorSystem("actor")
+    implicit val actorSystem = ActorSystem("actor", ConfigFactory.parseString("blocking-operations-dispatcher = akka.actor.default-dispatcher"))
     val supervisorTarget = TestProbe()
     val supervisor = actorSystem.actorOf(Props(new Supervisor(supervisorTarget.ref)))
 
@@ -160,13 +160,13 @@ class SessionManagerSpec extends WebBaseSpec {
   }
 
   "ChangePassword" should "change password on XMPP connection and send result indicating success" in testEnvironment { environment =>
-    when(environment.xmppSession.changePassword(TestPassword, TestNewPassword)).thenReturn(true)
+    when(environment.xmppSession.changePassword(TestPassword, TestNewPassword)).thenReturn(Future.successful(true))
     loginAndSendMessageExpectingResponse[Boolean](environment, ChangePassword(TestSessionId, TestPassword, TestNewPassword)) should === (true)
     verify(environment.xmppSession).changePassword(TestPassword, TestNewPassword)
   }
 
   it should "return result indicating failure if changing password fails" in testEnvironment { environment =>
-    when(environment.xmppSession.changePassword(TestPassword, TestNewPassword)).thenReturn(false)
+    when(environment.xmppSession.changePassword(TestPassword, TestNewPassword)).thenReturn(Future.successful(false))
     loginAndSendMessageExpectingResponse[Boolean](environment, ChangePassword(TestSessionId, TestPassword, TestNewPassword)) should === (false)
   }
 
@@ -195,7 +195,7 @@ class SessionManagerSpec extends WebBaseSpec {
     val webSockets = Vector(TestProbe(), TestProbe(), TestProbe())
     webSockets.foreach(webSocket => sessionManager ! RegisterWebSocket(TestSessionId, webSocket.ref))
 
-    when(environment.xmppSession.getContactList).thenAnswer(new Answer[Unit] {
+    when(environment.xmppSession.getContactList()).thenAnswer(new Answer[Unit] {
       override def answer(invocation: InvocationOnMock): Unit = {
         environment.sessionListener.foreach(_.contactsAdded(Vector(ContactInfo(TestContact1, Presence.Available), ContactInfo(TestContact2, Presence.Away))))
       }
@@ -226,18 +226,20 @@ class SessionManagerSpec extends WebBaseSpec {
   }
 
   "PublishData" should "write the given information to the data store and instruct the data store to publish it" in testEnvironment { environment =>
+    when(environment.dataStoreConnection.insertJSON("[]")).thenReturn(Future.successful(()))
+    when(environment.dataStoreConnection.publish(TestDataObjectUri)).thenReturn(Future.successful(()))
     loginAndSendMessage(environment, PublishData(TestSessionId, "[]", TestDataObjectUri))
     verify(environment.dataStoreConnection).insertJSON("[]")
     verify(environment.dataStoreConnection).publish(TestDataObjectUri)
   }
 
   "RetrieveData" should "retrieve the given information from the data store" in testEnvironment { environment =>
-    when(environment.dataStoreConnection.retrieveJSON(TestDataObjectUri)).thenReturn("[]")
+    when(environment.dataStoreConnection.retrieveJSON(TestDataObjectUri)).thenReturn(Future.successful("[]"))
     loginAndSendMessageExpectingResponse[String](environment, RetrieveData(TestSessionId, TestDataObjectUri)) should === ("[]")
   }
 
   "RetrievePublishedData" should "ask the data store to retrieve data published by another user" in testEnvironment { environment =>
-    when(environment.dataStoreConnection.retrievePublishedDataAsJSON(TestContact1, TestDataObjectUri)).thenReturn("[]")
+    when(environment.dataStoreConnection.retrievePublishedDataAsJSON(TestContact1, TestDataObjectUri)).thenReturn(Future.successful("[]"))
     loginAndSendMessageExpectingResponse[String](environment, RetrievePublishedData(TestSessionId, TestContact1, TestDataObjectUri)) should === ("[]")
   }
 
@@ -271,13 +273,13 @@ class SessionManagerSpec extends WebBaseSpec {
   }
 
   "RetrieveMediaItem" should "get the filename for the given hash from the data store" in testEnvironment { environment =>
-    when(environment.dataStoreConnection.retrieveMediaItem("thisIsAHash")).thenReturn(Some(Paths.get("/my/file")))
+    when(environment.dataStoreConnection.retrieveMediaItem("thisIsAHash")).thenReturn(Future.successful(Some(Paths.get("/my/file"))))
     loginAndSendMessageExpectingResponse[Option[Path]](environment, RetrieveMediaItem(TestSessionId, "thisIsAHash")) should === (Some(Paths.get("/my/file")))
   }
 
   "SPARQLQuery" should "send the given SPARQL query to the data store and return the response" in testEnvironment { environment =>
     val sampleSparqlQuery = "CONSTRUCT { ?s ?p ?o } WHERE { ?s ?p ?o }"
-    when(environment.dataStoreConnection.runSPARQLQuery(sampleSparqlQuery)).thenReturn("[]")
+    when(environment.dataStoreConnection.runSPARQLQuery(sampleSparqlQuery)).thenReturn(Future.successful("[]"))
     loginAndSendMessageExpectingResponse[String](environment, SPARQLQuery(TestSessionId, sampleSparqlQuery)) should === ("[]")
   }
 
@@ -325,18 +327,18 @@ class SessionManagerSpec extends WebBaseSpec {
   }
 
   private def createSessionManager(result: Either[LoginFailure, XMPPSession], environment: TestEnvironment): TestActorRef[SessionManager] = {
-    def createXMPPConnection(user: String, pass: String, settings: XMPPSettings, sessionListener: XMPPSessionListener) = {
+    def createXMPPConnection(user: String, pass: String, settings: XMPPSettings, sessionListener: XMPPSessionListener, executionContext: ExecutionContext): Future[Either[LoginFailure, XMPPSession]] = {
       user should === (TestUsername)
       pass should === (TestPassword)
       settings should === (TestXMPPSettings)
       environment.sessionListener = Some(sessionListener)
-      result
+      Future.successful(result)
     }
 
-    def createDataStoreConnection(user: String, xmppSession: XMPPSession) = {
+    def createDataStoreConnection(user: String, xmppSession: XMPPSession, executionContext: ExecutionContext): Future[DataStoreConnection] = {
       user should === (TestUsername)
       (xmppSession eq environment.xmppSession) should === (true)
-      environment.dataStoreConnection
+      Future.successful(environment.dataStoreConnection)
     }
 
     //Send a message to the supervisor, and when we get a response, we know that it has come up

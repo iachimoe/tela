@@ -45,7 +45,7 @@ class SettingsControllerSpec extends SessionManagerClientBaseSpec {
         NoAutoPilot
     })
 
-    val result = environment.client.listAvailableLanguages.apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionIdAsString)))
+    val result = environment.client.listAvailableLanguages().apply(FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionIdAsString)))
 
     status(result) should === (Status.OK)
     contentType(result) should === (Some(ContentTypes.JSON))
@@ -59,7 +59,7 @@ class SettingsControllerSpec extends SessionManagerClientBaseSpec {
         NoAutoPilot
     })
 
-    val result = environment.client.changePassword.apply(
+    val result = environment.client.changePassword().apply(
       FakeRequest().withCookies(Cookie(SessionIdCookieName, TestSessionIdAsString)).withBody(SettingsController.ChangePasswordRequest(TestPassword, TestNewPassword)))
 
     status(result) should === (expectedStatus)

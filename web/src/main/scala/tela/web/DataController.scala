@@ -14,7 +14,7 @@ import play.api.mvc._
 import tela.web.SessionManager._
 
 import java.time.LocalDateTime
-import scala.concurrent.ExecutionContext
+import scala.concurrent.{ExecutionContext, Future}
 
 class DataController @Inject()(
                                 userAction: UserAction,
@@ -66,14 +66,22 @@ class DataController @Inject()(
 
   def downloadMediaItem(hash: String, childPath: String): Action[AnyContent] = userAction.async { implicit request =>
     logger.info(s"User ${request.sessionData.userData.username} requesting path $childPath from media item $hash")
-    (sessionManager ? RetrieveMediaItem(request.sessionData.sessionId, hash)).mapTo[Option[Path]].map { maybeFile =>
-      maybeFile.flatMap(file => getChildFromArchive(file, childPath)).map {
-        case (path, fileSystems) => sendPathWithEmptyContentType(path, () => closeFileSystems(fileSystems))
-      }.getOrElse(NotFound)
-    }
+    for {
+      maybeFile <- (sessionManager ? RetrieveMediaItem(request.sessionData.sessionId, hash)).mapTo[Option[Path]]
+      maybeChild <- maybeFile.map(file => getChildFromArchive(file, childPath)).getOrElse(Future.successful(None))
+    } yield maybeChild.map {
+      case (path, fileSystems) => sendPathWithEmptyContentType(path, () => closeFileSystems(fileSystems))
+    }.getOrElse(NotFound)
   }
 
   private def sendPathWithEmptyContentType(path: Path, onClose: () => Unit) = {
+    //TODO in order for Safari to download audio/video files, the Range header
+    //should be supported. Something like the following code would work in principle:
+    //RangeResult.ofPath(path, request.headers.get(RANGE), Option(Files.probeContentType(path)))
+    //But getting the content type correctly would require registering a FileTypeDetector (tika provides one)
+    //or, preferably, to get the content type from our RDF data store. Accordingly, RangeResult should be doable
+    //once we have a clean way of getting the file name/content type from the RDF store.
+
     //Play tends to set the content type to something very generic by default,
     //which prompts the browser to download (save to disk) rather than display the file in the browser
     //By not setting the content type, the browser will do its own checks to see whether it's something that it can render
@@ -84,11 +92,13 @@ class DataController @Inject()(
   // Was originally going to do the file extraction in the data layer, but as the returned by FileSystem objects
   // contain a reference to the FileSystem, it seems unwise to be passing them around via Akka,
   // especially if we want to run the data layer in a different JVM in the future, using, for example, Akka cluster.
-  private def getChildFromArchive(archive: Path, childPath: String): Option[(Path, Vector[FileSystem])] = {
-    if (childPath.isEmpty) None
-    else try {
-      recursivelyGetPathForChild(FileSystems.newFileSystem(archive, null), Paths.get(childPath), None, Vector.empty)
-    } catch {
+  private def getChildFromArchive(archive: Path, childPath: String): Future[Option[(Path, Vector[FileSystem])]] = {
+    if (childPath.isEmpty) Future.successful(None)
+    else Future {
+      //TODO Conceivably this could be quite slow, e.g. for a big zip file on an NFS share
+      //Consider using different execution context?
+      recursivelyGetPathForChild(FileSystems.newFileSystem(archive), Paths.get(childPath), None, Vector.empty)
+    } recover {
       case _: ProviderNotFoundException => None
     }
   }
@@ -110,7 +120,7 @@ class DataController @Inject()(
         recursivelyGetPathForChild(fileSystem, allPartsExceptFirst, Some(firstPartWithParents), oldFileSystems)
       } else {
         try {
-          val newfs = FileSystems.newFileSystem(fileSystem.getPath(firstPartWithParents.toString), null)
+          val newfs = FileSystems.newFileSystem(fileSystem.getPath(firstPartWithParents.toString))
           recursivelyGetPathForChild(newfs, allPartsExceptFirst, None, fileSystem +: oldFileSystems)
         } catch {
           case _: Throwable =>

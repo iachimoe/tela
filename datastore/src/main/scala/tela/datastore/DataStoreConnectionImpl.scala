@@ -10,7 +10,6 @@ import org.apache.tika.config.{ServiceLoader, TikaConfig}
 import org.apache.tika.metadata.{HttpHeaders, Metadata, TikaCoreProperties}
 import org.apache.tika.parser.{AutoDetectParser, ParseContext, RecursiveParserWrapper}
 import org.apache.tika.sax.{BasicContentHandlerFactory, RecursiveParserWrapperHandler}
-import org.eclipse.rdf4j.common.iteration.Iterations
 import org.eclipse.rdf4j.model.Model
 import org.eclipse.rdf4j.model.impl.LinkedHashModel
 import org.eclipse.rdf4j.query.{QueryLanguage, QueryResults}
@@ -26,6 +25,7 @@ import tela.datastore.PathsWithinContainer.TikaPathInfo
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
+import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 
 object DataStoreConnectionImpl {
@@ -37,15 +37,17 @@ object DataStoreConnectionImpl {
 
   def getDataStore(rootDirectory: Path, user: String, genericFileDataMap: ComplexObject, dataMapping: Map[String, ComplexObject],
                    xmppSession: XMPPSession, tikaConfigFile: Path,
-                   generateUUIDForMediaObjects: () => UUID): DataStoreConnectionImpl = {
-    log.info("Retrieving data store for user {}", user)
+                   generateUUIDForMediaObjects: () => UUID,
+                   executionContext: ExecutionContext): Future[DataStoreConnectionImpl] = Future {
+      log.info("Retrieving data store for user {}", user)
 
-    if (!rootDirectory.toFile.isDirectory) {
-      throw new IllegalArgumentException(s"Directory $rootDirectory not found")
-    }
+      if (!rootDirectory.toFile.isDirectory) {
+        throw new IllegalArgumentException(s"Directory $rootDirectory not found")
+      }
 
-    new DataStoreConnectionImpl(rootDirectory.resolve(user), user, genericFileDataMap, dataMapping, xmppSession, tikaConfigFile, generateUUIDForMediaObjects)
-  }
+      new DataStoreConnectionImpl(rootDirectory.resolve(user), user, genericFileDataMap, dataMapping,
+        xmppSession, tikaConfigFile, generateUUIDForMediaObjects, executionContext)
+  }(executionContext)
 
   private[datastore] def convertRDFModelToJson(model: Model): String = {
     val output = new StringWriter
@@ -62,12 +64,11 @@ object DataStoreConnectionImpl {
   }
 }
 
-//TODO At the moment this class suffers from various performance/concurrency issues
-//Will have to be tested with big data volumes/concurrent access and optimised accordingly
 class DataStoreConnectionImpl(root: Path, user: String,
                               genericFileDataMap: ComplexObject, dataMapping: Map[String, ComplexObject],
-                              xmppSession: XMPPSession, tikaConfigFile: Path,
-                              generateUUID: () => UUID) extends DataStoreConnection {
+                              xmppSession: XMPPSession, tikaConfigFile: Path, generateUUID: () => UUID,
+                              executionContext: ExecutionContext) extends DataStoreConnection {
+  private implicit val ec: ExecutionContext = executionContext
   private val memoryStore: MemoryStore = new MemoryStore(root.toFile)
   private val luceneSail = new LuceneSail()
   luceneSail.setParameter(LuceneSail.LUCENE_DIR_KEY, root.resolve(LuceneDirectoryName).toString)
@@ -84,84 +85,89 @@ class DataStoreConnectionImpl(root: Path, user: String,
   private val tikaParser = new RecursiveParserWrapper(
     new AutoDetectParser(new TikaConfig(tikaConfigFile, new ServiceLoader(this.getClass.getClassLoader))))
 
-  override def closeConnection(): Unit = {
+  override def closeConnection(): Future[Unit] = Future {
     log.info("Closing connection for user {}", user)
     connection.close()
     repository.shutDown()
   }
 
-  override def insertJSON(data: String): Unit = {
+  override def insertJSON(data: String): Future[Unit] = Future {
     log.info("Request to insert data for user {}", user)
 
     val model = convertDataToRDFModel(data, RDFFormat.JSONLD)
 
     model.subjects().asScala.headOption.foreach(resource => connection.remove(resource, null, null))
-
     log.info("Number of triples {}", model.size.toString)
     connection.add(model)
   }
 
-  override def publish(uri: URI): Unit = {
+  override def publish(uri: URI): Future[Unit] = Future {
     log.info("Request to publish {} for user {}", uri, user)
-    val statements = connection.getStatements(repository.getValueFactory.createIRI(uri.toString), null, null, false)
-    val model = Iterations.addAll(statements, new LinkedHashModel())
+    val model = QueryResults.asModel(connection.getStatements(repository.getValueFactory.createIRI(uri.toString), null, null, false))
     val output = new StringWriter
 
     val writerConfig = new WriterConfig()
     writerConfig.set[java.lang.Boolean](XMLWriterSettings.INCLUDE_XML_PI, false)
 
     Rio.write(model, output, RDFFormat.RDFXML, writerConfig)
-    xmppSession.publish(uri, output.toString)
-  }
+    output
+  } flatMap(output => xmppSession.publish(uri, output.toString))
 
-  override def retrieveJSON(uri: URI): String = {
+  override def retrieveJSON(uri: URI): Future[String] = {
     log.info("Request to retrieve {} for user {}", uri, user)
     runSPARQLQuery(s"DESCRIBE <$uri>")
   }
 
-  override def retrievePublishedDataAsJSON(publisher: String, uri: URI): String = {
+  override def retrievePublishedDataAsJSON(publisher: String, uri: URI): Future[String] = {
     log.info("Request to retrieve {} from {} for user {}", uri, publisher, user)
-    val data = xmppSession.getPublishedData(publisher, uri)
-    val model = convertDataToRDFModel(data, RDFFormat.RDFXML)
-    convertRDFModelToJson(model)
+    xmppSession.getPublishedData(publisher, uri).map(data => {
+      val model = convertDataToRDFModel(data, RDFFormat.RDFXML)
+      convertRDFModelToJson(model)
+    })
   }
 
-  override def storeMediaItem(tempFileLocation: Path, originalFileName: Path, lastModified: Option[LocalDateTime]): Unit = {
+  override def storeMediaItem(tempFileLocation: Path, originalFileName: Path, lastModified: Option[LocalDateTime]): Future[Unit] = Future {
     log.info("Request to store file at location {} for user {}", tempFileLocation, user)
     val fileContentAsByteArray = try {
       Files.readAllBytes(tempFileLocation)
     } finally {
       //TODO no longer necessary - play deletes temp file
       tempFileLocation.toFile.delete()
+      ()
     }
     val hash = calculateHashForFileContent(fileContentAsByteArray)
 
     storeFileContent(fileContentAsByteArray, hash)
 
     storeMetadataAndIndexText(originalFileName, fileContentAsByteArray, hash, lastModified)
+    log.info("Finished storing file at location {} for user {}", tempFileLocation, user)
   }
 
-  override def retrieveMediaItem(hash: String): Option[Path] = {
+  override def retrieveMediaItem(hash: String): Future[Option[Path]] = Future {
     log.info("User {} requesting to retrieve file with hash {}", user, hash)
     val mediaItemsFolder = root.resolve(MediaItemsFolderName)
     val requestedFile = mediaItemsFolder.resolve(hash)
     if (Files.exists(requestedFile) && requestedFile.getParent == mediaItemsFolder) Some(requestedFile) else None
   }
 
-  override def runSPARQLQuery(query: String): String = {
+  override def runSPARQLQuery(query: String): Future[String] = Future {
     convertRDFModelToJson(QueryResults.asModel(connection.prepareGraphQuery(QueryLanguage.SPARQL, query).evaluate()))
   }
 
   private def storeFileContent(fileContentAsByteArray: Array[Byte], hash: String): Unit = {
     val storeLocation = root.resolve(MediaItemsFolderName)
-    if (!Files.exists(storeLocation))
+    if (!Files.exists(storeLocation)) {
       Files.createDirectory(storeLocation)
+      ()
+    }
 
     log.info("Storing file with hash {} for user {}", hash, user)
     Files.write(root.resolve(MediaItemsFolderName).resolve(hash), fileContentAsByteArray)
+    ()
   }
 
   private def storeMetadataAndIndexText(originalFileName: Path, fileContentAsByteArray: Array[Byte], hash: String, lastModified: Option[LocalDateTime]): Unit = {
+    log.info("Extracting metadata for file with hash {}", hash)
     val handler = new RecursiveParserWrapperHandler(new BasicContentHandlerFactory(BasicContentHandlerFactory.HANDLER_TYPE.TEXT, -1))
     val context = new ParseContext()
     val overallMetadata = new Metadata()
@@ -171,6 +177,7 @@ class DataStoreConnectionImpl(root: Path, user: String,
 
     val stream = new BufferedInputStream(new ByteArrayInputStream(fileContentAsByteArray))
     tikaParser.parse(stream, handler, overallMetadata, context)
+    log.info("Storing metadata for file with hash {}", hash)
     connection.add(createMetadataGraphForMultipleFiles(handler.getMetadataList.asScala.toVector, originalFileName, hash))
   }
 

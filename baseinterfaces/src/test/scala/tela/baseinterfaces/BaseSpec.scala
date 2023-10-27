@@ -6,6 +6,8 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatestplus.mockito.MockitoSugar
 
 import java.time.LocalDateTime
+import java.util.concurrent.TimeUnit
+import scala.concurrent.duration.Duration
 
 trait BaseSpec extends AnyFlatSpec with TypeCheckedTripleEquals with MockitoSugar {
   protected val TestDomain = "example.com"
@@ -27,4 +29,6 @@ trait BaseSpec extends AnyFlatSpec with TypeCheckedTripleEquals with MockitoSuga
 
   protected val TestDateInHttpHeaderFormat = "Tue, 05 Apr 2016 15:15:49 GMT"
   protected val TestDateAsLocalDateTime = LocalDateTime.of(2016, 4, 5, 15, 15, 49)
+
+  protected val TestAwaitTimeout = Duration(5, TimeUnit.SECONDS)
 }

@@ -31,8 +31,8 @@ package object web extends Logging {
   private[web] val TextEditorJsKey = "textEditorJs"
   private[web] val TextEditorJsFileName = "textEditor.js"
 
-  private val TimeoutDurationInSeconds = 9
-  private[web] implicit val GeneralTimeout = Timeout(TimeoutDurationInSeconds, TimeUnit.SECONDS)
+  private val TimeoutDurationInSeconds = 30
+  private[web] implicit val GeneralTimeout: Timeout = Timeout(TimeoutDurationInSeconds, TimeUnit.SECONDS)
 
   def getSessionFromRequest(request: RequestHeader, sessionManager: ActorRef)(implicit ec: ExecutionContext): Future[Option[(UUID, UserData)]] = {
     request.cookies.get(SessionIdCookieName).map(cookie => {

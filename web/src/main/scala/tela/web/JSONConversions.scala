@@ -13,7 +13,7 @@ object JSONConversions {
   val SelectedLanguageKey = "selected"
   val LanguageKey = "language"
 
-  implicit val languageInfoWrites = new Writes[LanguageInfo] {
+  implicit val languageInfoWrites: Writes[LanguageInfo] = new Writes[LanguageInfo] {
     def writes(languages: LanguageInfo) = Json.obj(
       LanguagesKey -> Json.toJsFieldJsValueWrapper(languages.languages),
       SelectedLanguageKey -> languages.selected)
@@ -33,7 +33,7 @@ object JSONConversions {
 
   val AddContactsAction = "addContacts"
 
-  implicit val addContactsWrites = new Writes[AddContacts] {
+  implicit val addContactsWrites: Writes[AddContacts] = new Writes[AddContacts] {
     def writes(addContacts: AddContacts) = Json.obj(
       ActionKey -> AddContactsAction,
       DataKey -> Json.arr(addContacts.contacts.map {
@@ -45,7 +45,7 @@ object JSONConversions {
 
   val PresenceUpdateAction = "presenceUpdate"
 
-  implicit val presenceUpdateWrites = new Writes[PresenceUpdate] {
+  implicit val presenceUpdateWrites: Writes[PresenceUpdate] = new Writes[PresenceUpdate] {
     def writes(presenceUpdate: PresenceUpdate) = Json.obj(
       ActionKey -> PresenceUpdateAction,
       DataKey -> Json.obj(
@@ -58,7 +58,7 @@ object JSONConversions {
 
   val SelfPresenceUpdateAction = "selfPresenceUpdate"
 
-  implicit val selfPresenceUpdateWrites = new Writes[SelfPresenceUpdate] {
+  implicit val selfPresenceUpdateWrites: Writes[SelfPresenceUpdate] = new Writes[SelfPresenceUpdate] {
     def writes(presenceUpdate: SelfPresenceUpdate) = Json.obj(
       ActionKey -> SelfPresenceUpdateAction,
       DataKey -> Json.obj(
@@ -75,7 +75,7 @@ object JSONConversions {
 
   case class CallSignalReceipt(user: String, data: String)
 
-  implicit val callSignalReceiptWrites = new Writes[CallSignalReceipt] {
+  implicit val callSignalReceiptWrites: Writes[CallSignalReceipt] = new Writes[CallSignalReceipt] {
     override def writes(callSignalReceipt: CallSignalReceipt) = Json.obj(
       ActionKey -> CallSignalReceived,
       DataKey -> Json.obj(
@@ -93,7 +93,7 @@ object JSONConversions {
 
   case class ChatMessageReceipt(user: String, message: String)
 
-  implicit val chatMessageReceiptWrites = new Writes[ChatMessageReceipt] {
+  implicit val chatMessageReceiptWrites: Writes[ChatMessageReceipt] = new Writes[ChatMessageReceipt] {
     override def writes(chatMessageReceipt: ChatMessageReceipt) = Json.obj(
       ActionKey -> ChatMessageReceived,
       DataKey -> Json.obj(

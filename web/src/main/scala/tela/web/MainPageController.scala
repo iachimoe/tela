@@ -40,6 +40,10 @@ object MainPageController {
   private[web] val AppsKeyInIndexHash = "apps"
 
   case class LoginDetails(username: String, password: String)
+
+  object LoginDetails {
+    def unapply(l: LoginDetails): Option[(String, String)] = Some(l.username, l.password)
+  }
 }
 
 class MainPageController @Inject()(

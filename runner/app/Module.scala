@@ -1,6 +1,5 @@
 import java.nio.file.{Path, Paths}
 import java.util.UUID
-
 import Module._
 import akka.actor.Props
 import com.google.inject.AbstractModule
@@ -12,6 +11,8 @@ import tela.baseinterfaces.{ComplexObject, DataStoreConnection, XMPPSession, XMP
 import tela.datastore.DataStoreConnectionImpl
 import tela.web.{JsonFileHelper, SessionManager}
 import tela.xmpp.SmackXMPPSession
+
+import scala.concurrent.{ExecutionContext, Future}
 
 object Module {
   case class DataStoreSettings(location: Path, genericFileDataMap: ComplexObject, dataMapping: Map[String, ComplexObject])
@@ -76,15 +77,16 @@ class Module(environment: Environment, configuration: Configuration) extends Abs
     bind(classOf[Path]).annotatedWith(Names.named("app-index-file")).toInstance(AppIndexFile)
   }
 
-  private def createDataStoreConnection(dataStoreSettings: DataStoreSettings): (String, XMPPSession) => DataStoreConnection = {
-    (user: String, xmppSession: XMPPSession) => DataStoreConnectionImpl.getDataStore(
+  private def createDataStoreConnection(dataStoreSettings: DataStoreSettings): (String, XMPPSession, ExecutionContext) => Future[DataStoreConnection] = {
+    (user: String, xmppSession: XMPPSession, executionContext: ExecutionContext) => DataStoreConnectionImpl.getDataStore(
       dataStoreSettings.location,
       user,
       dataStoreSettings.genericFileDataMap,
       dataStoreSettings.dataMapping,
       xmppSession,
       TikaConfigFileName,
-      generateUUID _)
+      generateUUID _,
+      executionContext)
   }
 
   private def generateUUID(): UUID = {

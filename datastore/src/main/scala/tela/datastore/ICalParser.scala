@@ -19,7 +19,7 @@ import scala.reflect.ClassTag
 //TODO This is a very rudimentary parser that is unlikely to stand up very well in the real world
 //Hopefully Tika includes an ical parser soon
 class ICalParser extends AbstractParser {
-  private val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE_TIME
+  private val dateFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
 
   override def getSupportedTypes(context: ParseContext): util.Set[MediaType] = Collections.singleton(MediaType.parse(ICalContentType))
 

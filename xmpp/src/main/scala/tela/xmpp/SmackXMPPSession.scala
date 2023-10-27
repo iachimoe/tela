@@ -32,6 +32,7 @@ import tela.baseinterfaces
 import tela.baseinterfaces.{Presence, _}
 import tela.xmpp.SmackXMPPSession._
 
+import scala.concurrent.{ExecutionContext, Future}
 import scala.jdk.CollectionConverters._
 
 object SmackXMPPSession {
@@ -51,30 +52,43 @@ object SmackXMPPSession {
 
   ProviderManager.addIQProvider(CallSignalElementName, TelaURN, new CallSignalProvider)
 
-  def connectToServer(username: String, password: String, xmppSettings: XMPPSettings, sessionListener: XMPPSessionListener): Either[LoginFailure, XMPPSession] = {
-    connectToServer(username, password, createTCPConnectionToServer(xmppSettings), xmppSettings, sessionListener)
+  def connectToServer(username: String, password: String, xmppSettings: XMPPSettings,
+                      sessionListener: XMPPSessionListener, executionContext: ExecutionContext): Future[Either[LoginFailure, XMPPSession]] = {
+    connectToServer(username, password, createTCPConnectionToServer(xmppSettings), xmppSettings, sessionListener, executionContext)
   }
 
-  private[xmpp] def connectToServer(username: String, password: String, connection: AbstractXMPPConnection, xmppSettings: XMPPSettings, sessionListener: XMPPSessionListener): Either[LoginFailure, XMPPSession] = {
-    connectToServer(username, password, DefaultResourceName, connection, xmppSettings, sessionListener)
+  private[xmpp] def connectToServer(username: String, password: String, connection: AbstractXMPPConnection, xmppSettings: XMPPSettings,
+                                    sessionListener: XMPPSessionListener, executionContext: ExecutionContext): Future[Either[LoginFailure, XMPPSession]] = {
+    connectToServer(username, password, DefaultResourceName, connection, xmppSettings, sessionListener, executionContext)
   }
 
-  private def connectToServer(username: String, password: String, resource: String, connection: AbstractXMPPConnection, xmppSettings: XMPPSettings, sessionListener: XMPPSessionListener): Either[LoginFailure, XMPPSession] = {
-    try {
-      log.debug("Connecting to server for user {}", username)
-      connection.connect()
-    }
-    catch {
-      case ex: ConnectionException =>
-        log.error(s"Failed to connect to server for user $username", ex)
-        connection.disconnect()
-        return Left(LoginFailure.ConnectionFailure)
-    }
+  private def connectToServer(username: String, password: String, resource: String, connection: AbstractXMPPConnection,
+                              xmppSettings: XMPPSettings, sessionListener: XMPPSessionListener, executionContext: ExecutionContext): Future[Either[LoginFailure, XMPPSession]] =
+    Future {
+      try {
+        log.debug("Connecting to server for user {}", username)
+        connection.connect()
+        true
+      }
+      catch {
+        case ex: ConnectionException =>
+          log.error(s"Failed to connect to server for user $username", ex)
+          connection.disconnect()
+          false
+      }
+    }(executionContext).map(connectionSucceeded => {
+      if (connectionSucceeded)
+        performLogin(username, password, resource, connection, xmppSettings, sessionListener, executionContext)
+      else
+        Left(LoginFailure.ConnectionFailure)
+    })(executionContext)
 
+  private def performLogin(username: String, password: String, resource: String, connection: AbstractXMPPConnection,
+                           xmppSettings: XMPPSettings, sessionListener: XMPPSessionListener, executionContext: ExecutionContext): Either[LoginFailure, XMPPSession] =
     try {
       log.info("User {} attempting login", username)
       connection.login(username, password, Resourcepart.from(resource))
-      val session: SmackXMPPSession = new SmackXMPPSession(connection, sessionListener, xmppSettings)
+      val session: SmackXMPPSession = new SmackXMPPSession(connection, sessionListener, xmppSettings, executionContext)
 
       val roster = Roster.getInstanceFor(connection)
       roster.addRosterListener(new ContactListChangeListener(session))
@@ -88,7 +102,6 @@ object SmackXMPPSession {
         connection.disconnect()
         Left(LoginFailure.InvalidCredentials)
     }
-  }
 
   private def createTCPConnectionToServer(xmppSettings: XMPPSettings): XMPPTCPConnection = {
     log.debug("Creating new connection object")
@@ -171,38 +184,43 @@ object SmackXMPPSession {
   }
 }
 
-private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, private val sessionListener: XMPPSessionListener, private val xmppSettings: XMPPSettings) extends XMPPSession {
-  override def disconnect(): Unit = {
+private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection,
+                                     private val sessionListener: XMPPSessionListener,
+                                     private val xmppSettings: XMPPSettings,
+                                     private val executionContext: ExecutionContext) extends XMPPSession {
+  private implicit val ec: ExecutionContext = executionContext
+
+  override def disconnect(): Future[Unit] = Future {
     log.info("Disconnecting {}", connection.getUser)
     connection.asInstanceOf[AbstractXMPPConnection].disconnect()
   }
 
-  override def setPresence(presence: tela.baseinterfaces.Presence): Unit = {
+  override def setPresence(presence: tela.baseinterfaces.Presence): Future[Unit] = Future {
     log.info("User {} setting presence to {}", connection.getUser, presence)
     getXMPPPresenceFromTelaPresence(presence).foreach(presence => {
       connection.sendStanza(connection.getStanzaFactory.buildPresenceStanza().setMode(presence).setStatus(DefaultStatusText).setPriority(DefaultPriority).build())
     })
   }
 
-  override def changePassword(existingPassword: String, newPassword: String): Boolean = {
+  override def changePassword(existingPassword: String, newPassword: String): Future[Boolean] = {
     changePassword(existingPassword, newPassword, createTCPConnectionToServer(xmppSettings))
   }
 
-  override def getContactList(): Unit = {
+  override def getContactList(): Future[Unit] = Future {
     log.info("Retrieving contact list for user {}", connection.getUser)
     sessionListener.contactsAdded(Roster.getInstanceFor(connection).getEntries.asScala.toVector.map(
       entry => ContactInfo(entry.getJid.asUnescapedString(), getTelaPresenceFromXMPPPresence(Roster.getInstanceFor(connection).getPresence(entry.getJid)))))
     sessionListener.selfPresenceChanged(getTelaPresenceFromXMPPPresence(Roster.getInstanceFor(connection).getPresence(connection.getUser.asBareJid())))
   }
 
-  override def addContact(address: String): Unit = {
+  override def addContact(address: String): Future[Unit] = Future {
     log.info("User {} adding contact {}", connection.getUser, address)
     Roster.getInstanceFor(connection).createItemAndRequestSubscription(JidCreate.bareFrom(address), address, Array[String]())
   }
 
   // BEGIN UNTESTED PUBSUB STUFF
 
-  override def publish(nodeName: URI, content: String): Unit = {
+  override def publish(nodeName: URI, content: String): Future[Unit] = Future {
     val manager = PubSubManager.getInstanceFor(connection, connection.getUser.asBareJid())
 
     val node = getNode(manager, nodeName, connection.getUser.asUnescapedString()).getOrElse(createNode(manager, nodeName))
@@ -213,7 +231,7 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
     node.publish(payloadItem)
   }
 
-  override def getPublishedData(user: String, nodeName: URI): String = {
+  override def getPublishedData(user: String, nodeName: URI): Future[String] = Future {
     val manager = PubSubManager.getInstanceFor(connection, JidCreate.bareFrom(user))
 
     getNode(manager, nodeName, user).flatMap(node => {
@@ -267,7 +285,7 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
 
   // END UNTESTED PUBSUB STUFF
 
-  override def sendCallSignal(user: String, data: String): Unit = {
+  override def sendCallSignal(user: String, data: String): Future[Unit] = Future {
     log.info("User {} sending call signal to user {}", connection.getUser, user)
     val signal: CallSignal = new CallSignal(data)
     signal.setTo(JidCreate.fullFrom(if (XmppStringUtils.isFullJID(user)) user else s"$user/$DefaultResourceName"))
@@ -275,7 +293,7 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
     connection.sendStanza(signal)
   }
 
-  override def sendChatMessage(user: String, message: String): Unit = {
+  override def sendChatMessage(user: String, message: String): Future[Unit] = Future {
     log.info("User {} sending chat message to user {}", connection.getUser, user)
     //TODO would probably be better to maintain a list of chat objects rather than creating a new one every time
     ChatManager.getInstanceFor(connection).chatWith(JidCreate.entityBareFrom(user)).send(message)
@@ -309,22 +327,28 @@ private[xmpp] class SmackXMPPSession(private val connection: XMPPConnection, pri
     getTelaPresenceFromXMPPPresence(Roster.getInstanceFor(connection).getPresence(JidCreate.bareFrom(contact)))
   }
 
-  private[xmpp] def changePassword(existingPassword: String, newPassword: String, changePasswordConnection: AbstractXMPPConnection): Boolean = {
+  private[xmpp] def changePassword(existingPassword: String, newPassword: String, changePasswordConnection: AbstractXMPPConnection): Future[Boolean] = {
     if (newPassword.isEmpty) {
       log.info("Rejecting blank password change request from user {}", connection.getUser)
-      changePasswordConnection.disconnect()
-      false
-    }
-    else if (connectToServer(XmppStringUtils.parseLocalpart(connection.getUser.asUnescapedString()), existingPassword, ChangePasswordResource, changePasswordConnection, xmppSettings, new StubSessionListener).isLeft) {
-      log.info("Failed to change password for user {}", connection.getUser)
-      false
-    }
-    else {
-      log.info("Changing password for user {}", connection.getUser)
-      val accountManager = AccountManager.getInstance(changePasswordConnection)
-      accountManager.changePassword(newPassword)
-      changePasswordConnection.disconnect()
-      true
+      Future {
+        changePasswordConnection.disconnect()
+        false
+      }
+    } else {
+      connectToServer(XmppStringUtils.parseLocalpart(connection.getUser.asUnescapedString()),
+        existingPassword, ChangePasswordResource, changePasswordConnection, xmppSettings,
+        new StubSessionListener, executionContext).map(loginResult => {
+        if (loginResult.isLeft) {
+          log.info("Failed to change password for user {}", connection.getUser)
+          false
+        } else {
+          log.info("Changing password for user {}", connection.getUser)
+          val accountManager = AccountManager.getInstance(changePasswordConnection)
+          accountManager.changePassword(newPassword)
+          changePasswordConnection.disconnect()
+          true
+        }
+      })
     }
   }
 

@@ -3,6 +3,7 @@ package tela.baseinterfaces
 import java.net.URI
 import java.nio.file.Path
 import java.time.LocalDateTime
+import scala.concurrent.Future
 
 object DataType extends Enumeration {
   val Text = Value("Text")
@@ -26,19 +27,19 @@ object DataStoreConnection {
 }
 
 trait DataStoreConnection {
-  def closeConnection(): Unit
+  def closeConnection(): Future[Unit]
 
-  def publish(uri: URI): Unit
+  def publish(uri: URI): Future[Unit]
 
-  def insertJSON(data: String): Unit
+  def insertJSON(data: String): Future[Unit]
 
-  def retrieveJSON(uri: URI): String
+  def retrieveJSON(uri: URI): Future[String]
 
-  def retrievePublishedDataAsJSON(user: String, uri: URI): String
+  def retrievePublishedDataAsJSON(user: String, uri: URI): Future[String]
 
-  def storeMediaItem(tempFileLocation: Path, originalFileName: Path, lastModified: Option[LocalDateTime]): Unit
+  def storeMediaItem(tempFileLocation: Path, originalFileName: Path, lastModified: Option[LocalDateTime]): Future[Unit]
 
-  def retrieveMediaItem(hash: String): Option[Path]
+  def retrieveMediaItem(hash: String): Future[Option[Path]]
 
-  def runSPARQLQuery(query: String): String
+  def runSPARQLQuery(query: String): Future[String]
 }

@@ -15,7 +15,7 @@ object DataMappingReads {
       (JsPath \ "children").lazyRead[Map[String, RDFObjectDefinition]](Reads.map(rdfObjectDefinitionReads)).map(_.map({ case (k: String, v: RDFObjectDefinition) => (new URI(k), v) }))
     ) (ComplexObject.apply _)
 
-  implicit val rdfObjectDefinitionReads = new Reads[RDFObjectDefinition] {
+  implicit val rdfObjectDefinitionReads: Reads[RDFObjectDefinition] = new Reads[RDFObjectDefinition] {
     override def reads(json: JsValue): JsResult[RDFObjectDefinition] = {
       json.validate[SimpleObject].orElse(Json.fromJson[ComplexObject](json))
     }

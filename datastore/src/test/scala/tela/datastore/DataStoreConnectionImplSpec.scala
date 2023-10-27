@@ -19,6 +19,8 @@ import tela.baseinterfaces.{ComplexObject, XMPPSession}
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDateTime, ZoneId}
 import scala.xml._
+import scala.concurrent.ExecutionContext.global
+import scala.concurrent.{Await, Future}
 
 class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   private val BaseTestDir = TestDataRoot.resolve("store")
@@ -257,7 +259,7 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
                                              |        ],
                                              |        "$TextContentPredicate": [
                                              |            {
-                                             |                "@value": "${fileContentLikeFromTika(15, s"$TestTextFileName\\n")}"
+                                             |                "@value": "${fileContentLikeFromTika(17, s"$TestTextFileName\\n")}"
                                              |            }
                                              |        ],
                                              |        "http://schema.org/lastModified" : [
@@ -291,13 +293,13 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
     val xmppSession = mock[XMPPSession]
 
     var uuids = Vector(TestUUID, AdditionalTestUUID1, AdditionalTestUUID2, AdditionalTestUUID3)
-    val connection = DataStoreConnectionImpl.getDataStore(BaseTestDir, TestUsername, GenericFileDataMap,
+    val connection = Await.result(DataStoreConnectionImpl.getDataStore(BaseTestDir, TestUsername, GenericFileDataMap,
       Map(MP3ContentType -> MP3FileDataMap, ICalContentType -> ICalDataMap, PlainTextContentType -> PlainTextDataMap),
       xmppSession, TestTikaConfigFile, () => {
         val result = uuids.head
         uuids = uuids.tail
         result
-      })
+      }, global), TestAwaitTimeout)
 
     try {
       runTest(new TestEnvironment(connection, xmppSession))
@@ -307,25 +309,27 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   }
 
   private def cleanUpDataStore(connection: DataStoreConnectionImpl): Unit = {
-    connection.closeConnection()
+    Await.result(connection.closeConnection(), TestAwaitTimeout)
     connection.connection.isOpen should === (false)
     connection.repository.isInitialized should === (false)
   }
 
   "getDataStore" should "throw an IllegalArgumentException for a non-existent data store" in testEnvironment { environment =>
     assertThrows[IllegalArgumentException] {
-      DataStoreConnectionImpl.getDataStore(NonExistentDataStore, TestUsername, ComplexObject(new URI(""), Map()), Map(), environment.xmppSession, TestTikaConfigFile, () => UUID.randomUUID())
+      Await.result(DataStoreConnectionImpl.getDataStore(
+        NonExistentDataStore, TestUsername, ComplexObject(new URI(""), Map()), Map(),
+        environment.xmppSession, TestTikaConfigFile, () => UUID.randomUUID(), global), TestAwaitTimeout)
     }
   }
 
   "retrieveJson" should "return an empty array when an arbitrary URI is requested from an empty store" in testEnvironment { environment =>
-    environment.connection.retrieveJSON(TestDataObjectUri) should beJSONLDEquivalentTo("[]")
+    environment.connection.retrieveJSON(TestDataObjectUri) should beFutureJSONLDEquivalentTo("[]")
   }
 
   it should "retrieve the same JSONLD graph that was inserted when the URI of that graph is requested" in testEnvironment { environment =>
-    environment.connection.insertJSON(TestProfileInfoAsJSON)
-    environment.connection.retrieveJSON(TestDataObjectUri) should beJSONLDEquivalentTo(TestProfileInfoAsJSON)
-    environment.connection.retrieveJSON(new URI("http://tela/nonExistant")) should beJSONLDEquivalentTo("[]")
+    insertJSON(TestProfileInfoAsJSON, environment)
+    environment.connection.retrieveJSON(TestDataObjectUri) should beFutureJSONLDEquivalentTo(TestProfileInfoAsJSON)
+    environment.connection.retrieveJSON(new URI("http://tela/nonExistant")) should beFutureJSONLDEquivalentTo("[]")
   }
 
   it should "not retrieve unrelated data" in testEnvironment { environment =>
@@ -336,9 +340,9 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
                          |    }
                          |]""".stripMargin
 
-    environment.connection.insertJSON(TestProfileInfoAsJSON)
-    environment.connection.insertJSON(otherPerson)
-    environment.connection.retrieveJSON(TestDataObjectUri) should beJSONLDEquivalentTo(TestProfileInfoAsJSON)
+    insertJSON(TestProfileInfoAsJSON, environment)
+    insertJSON(otherPerson, environment)
+    environment.connection.retrieveJSON(TestDataObjectUri) should beFutureJSONLDEquivalentTo(TestProfileInfoAsJSON)
   }
 
   "insertJson" should "overwrite old content when new content is inserted with a pre-existing URI" in testEnvironment { environment =>
@@ -359,22 +363,26 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
                            |    }
                            |]""".stripMargin
 
-    environment.connection.insertJSON(alternateData)
-    environment.connection.insertJSON(TestProfileInfoAsJSON)
-    environment.connection.retrieveJSON(TestDataObjectUri) should beJSONLDEquivalentTo(TestProfileInfoAsJSON)
+    insertJSON(alternateData, environment)
+    insertJSON(TestProfileInfoAsJSON, environment)
+    environment.connection.retrieveJSON(TestDataObjectUri) should beFutureJSONLDEquivalentTo(TestProfileInfoAsJSON)
   }
 
   "publish" should "publish given URI in XML format via XMPP" in testEnvironment { environment =>
-    environment.connection.insertJSON(TestProfileInfoAsJSON)
+    insertJSON(TestProfileInfoAsJSON, environment)
     environment.connection.publish(TestDataObjectUri)
 
     verify(environment.xmppSession).publish(ArgumentMatchers.eq(TestDataObjectUri), argThat(new XMLMatcher(TestProfileInfoAsXML)))
   }
 
-  "getPublishedData" should "retrieve published data from XMPPSession and return response as JSON" in testEnvironment { environment =>
-    when(environment.xmppSession.getPublishedData(TestUsername, TestDataObjectUri)).thenReturn(TestProfileInfoAsXML.toString)
+  private def insertJSON(json: String, environment: TestEnvironment): Unit = {
+    Await.result(environment.connection.insertJSON(json), TestAwaitTimeout)
+  }
 
-    environment.connection.retrievePublishedDataAsJSON(TestUsername, TestDataObjectUri) should beJSONLDEquivalentTo(TestProfileInfoAsJSON)
+  "getPublishedData" should "retrieve published data from XMPPSession and return response as JSON" in testEnvironment { environment =>
+    when(environment.xmppSession.getPublishedData(TestUsername, TestDataObjectUri)).thenReturn(Future.successful(TestProfileInfoAsXML.toString))
+
+    environment.connection.retrievePublishedDataAsJSON(TestUsername, TestDataObjectUri) should beFutureJSONLDEquivalentTo(TestProfileInfoAsJSON)
   }
 
   "storeMediaItem" should "place contents of temporary file in data store with correct hash and remove temporary file" in testEnvironment { environment =>
@@ -394,61 +402,65 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
 
   it should "store UUID, hash and file format of media items in RDF store" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, None, environment.connection)
-    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beJSONLDEquivalentTo(TestHTMLFileMetadataAsJSON)
+    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beFutureJSONLDEquivalentTo(TestHTMLFileMetadataAsJSON)
   }
 
   it should "store metadata from MP3 file in RDF store" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestMP3, TestMP3FileName, Some(TestDateAsLocalDateTime), environment.connection)
-    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beJSONLDEquivalentTo(
+    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beFutureJSONLDEquivalentTo(
       testMP3FileMetadataAsJSON(TestUUID, HashOfTestMP3, 22, TestDateWithIsoInstantFormat))
   }
 
   it should "extract appropriate metadata from ical content" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestIcalFileWithEvent, TestIcalWithEventFileName, None, environment.connection)
-    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beJSONLDEquivalentTo(TestICalFileMetadataAsJSON)
+    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beFutureJSONLDEquivalentTo(TestICalFileMetadataAsJSON)
   }
 
   it should "store filename and last modified date" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestTextFile, TestTextFileName, Some(TestDateAsLocalDateTime), environment.connection)
-    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beJSONLDEquivalentTo(
+    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beFutureJSONLDEquivalentTo(
       testTextFileMetadataAsJSON(TestUUID, HashOfTestTextFile, 11, TestDateWithIsoInstantFormat))
   }
 
   it should "extract metadata for all contents in a compound file format and index text" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestZipFile, TestZipFileName, None, environment.connection)
-    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beJSONLDEquivalentTo(TestZipFileMetadataAsJSON)
-    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID1)) should beJSONLDEquivalentTo(
-      testMP3FileMetadataAsJSON(AdditionalTestUUID1, s"$HashOfTestZipFile/music/$TestMP3FileName", 26, "2022-07-20T08:22:00.000Z"))
-    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID2)) should beJSONLDEquivalentTo(
-      testTextFileMetadataAsJSON(AdditionalTestUUID2, s"$HashOfTestZipFile/testTextFile.zip/$TestTextFileName", 15, "2022-07-20T08:22:00.000Z"))
-    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID3)) should beJSONLDEquivalentTo(TestInnerZipFileMetadataAsJSON)
+    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beFutureJSONLDEquivalentTo(TestZipFileMetadataAsJSON)
+    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID1)) should beFutureJSONLDEquivalentTo(
+      testMP3FileMetadataAsJSON(AdditionalTestUUID1, s"$HashOfTestZipFile/music/$TestMP3FileName", 28, "2022-07-20T08:22:00.000Z"))
+    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID2)) should beFutureJSONLDEquivalentTo(
+      testTextFileMetadataAsJSON(AdditionalTestUUID2, s"$HashOfTestZipFile/testTextFile.zip/$TestTextFileName", 17, "2022-07-20T08:22:00.000Z"))
+    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID3)) should beFutureJSONLDEquivalentTo(TestInnerZipFileMetadataAsJSON)
   }
 
   "retrieveMediaItem" should "return the absolute path of the requested file if it exists in the data store" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, None, environment.connection)
-    environment.connection.retrieveMediaItem(HashOfTestHtmlFile) should === (Some(TestMediaItemsRoot.resolve(HashOfTestHtmlFile)))
+    retrieveMediaItem(HashOfTestHtmlFile, environment) should === (Some(TestMediaItemsRoot.resolve(HashOfTestHtmlFile)))
   }
 
   it should "return None for a non-existent media item" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, None, environment.connection) //adding this file to ensure that data store exists
-    environment.connection.retrieveMediaItem("notARealHash") should === (None)
+    retrieveMediaItem("notARealHash", environment) should === (None)
   }
 
   it should "prohibit attempts to retrieve files from other folders" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, None, environment.connection) //adding this file to ensure that data store exists
-    environment.connection.retrieveMediaItem("../../.gitignore") should === (None)
+    retrieveMediaItem("../../.gitignore", environment) should === (None)
+  }
+
+  private def retrieveMediaItem(hash: String, environment: TestEnvironment): Option[Path] = {
+    Await.result(environment.connection.retrieveMediaItem(hash), TestAwaitTimeout)
   }
 
   "runSPARQLQuery" should "return empty array for query against empty repository" in testEnvironment { environment =>
-    environment.connection.runSPARQLQuery(WildcardSparqlQuery) should === ("[ ]")
+    Await.result(environment.connection.runSPARQLQuery(WildcardSparqlQuery), TestAwaitTimeout) should === ("[ ]")
   }
 
   it should "handle full text search queries" in testEnvironment { environment =>
     environment.connection.insertJSON(TestProfileInfoAsJSON)
 
-    val result = environment.connection.runSPARQLQuery("PREFIX search: <http://www.openrdf.org/contrib/lucenesail#>\n" +
+    val result = Await.result(environment.connection.runSPARQLQuery("PREFIX search: <http://www.openrdf.org/contrib/lucenesail#>\n" +
       "PREFIX foaf: <http://xmlns.com/foaf/0.1/>\n" +
-      "CONSTRUCT { } WHERE { ?s foaf:familyName ?o . ?s search:matches [ search:query \"bar\" ] }")
+      "CONSTRUCT { } WHERE { ?s foaf:familyName ?o . ?s search:matches [ search:query \"bar\" ] }"), TestAwaitTimeout)
 
     result should === (TestFamilyNameFromProfileInfo)
   }
@@ -471,8 +483,8 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
         "prefix xsd: <" + XSD.NAMESPACE + ">" +
         "DESCRIBE ?subject where { ?subject geo:asWKT ?object . filter(geof:distance(\"POINT (2.2950 48.8738)\"^^geo:wktLiteral, ?object, uom:metre) < \"500.0\"^^xsd:double) }"
 
-    val result: String = environment.connection.runSPARQLQuery(placesNearArcDeTriompheQuery)
-    result should beJSONLDEquivalentTo(graphWithRestaurantAsJson)
+    val result = environment.connection.runSPARQLQuery(placesNearArcDeTriompheQuery)
+    result should beFutureJSONLDEquivalentTo(graphWithRestaurantAsJson)
   }
 
   private def createTempFileAndStoreContent(path: Path,
@@ -481,15 +493,15 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
                                             connection: DataStoreConnectionImpl): Path = {
     val tempFile = Files.createTempFile("aaa", "")
     Files.copy(path, tempFile, StandardCopyOption.REPLACE_EXISTING)
-    connection.storeMediaItem(tempFile, originalFileName, lastModified)
+    Await.result(connection.storeMediaItem(tempFile, originalFileName, lastModified), TestAwaitTimeout)
     tempFile
   }
 
-  private def beJSONLDEquivalentTo(expectedValue: String) = {
-    new Matcher[String]() {
-      override def apply(left: String): MatchResult = {
+  private def beFutureJSONLDEquivalentTo(expectedValue: String): Matcher[Future[String]] = {
+    new Matcher[Future[String]]() {
+      override def apply(left: Future[String]): MatchResult = {
         MatchResult(
-          Models.isomorphic(getJSONAsRDFModel(expectedValue), getJSONAsRDFModel(left)),
+          Models.isomorphic(getJSONAsRDFModel(expectedValue), getJSONAsRDFModel(Await.result(left, TestAwaitTimeout))),
           s"""Expected $expectedValue, but got $left""",
           s"""Got the expected value $expectedValue""")
       }
@@ -517,13 +529,9 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   }
 
   private class XMLMatcher(private val expected: Elem) extends ArgumentMatcher[String] {
-    override def matches(argument: String): Boolean = {
-      argument match {
-        case actual: String =>
-          //Ensure that the result doesn't start with a declaration so that we can easily embed it in another XML doc
-          !actual.startsWith("<?xml") && Utility.trim(expected) == Utility.trim(XML.loadString(actual))
-        case _ => false
-      }
+    override def matches(actual: String): Boolean = {
+      //Ensure that the result doesn't start with a declaration so that we can easily embed it in another XML doc
+      !actual.startsWith("<?xml") && Utility.trim(expected) == Utility.trim(XML.loadString(actual))
     }
   }
 }

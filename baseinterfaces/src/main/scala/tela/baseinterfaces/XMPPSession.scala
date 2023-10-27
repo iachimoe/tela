@@ -1,6 +1,7 @@
 package tela.baseinterfaces
 
 import java.net.URI
+import scala.concurrent.Future
 
 case class XMPPSettings(hostname: String, port: Int, domain: String, securityMode: String, debug: Boolean)
 
@@ -48,21 +49,21 @@ trait XMPPSessionListener {
 }
 
 trait XMPPSession {
-  def disconnect(): Unit
+  def disconnect(): Future[Unit]
 
-  def setPresence(presence: Presence): Unit
+  def setPresence(presence: Presence): Future[Unit]
 
-  def changePassword(existingPassword: String, newPassword: String): Boolean
+  def changePassword(existingPassword: String, newPassword: String): Future[Boolean]
 
-  def getContactList(): Unit
+  def getContactList(): Future[Unit]
 
-  def addContact(address: String): Unit
+  def addContact(address: String): Future[Unit]
 
-  def publish(node: URI, content: String): Unit
+  def publish(node: URI, content: String): Future[Unit]
 
-  def getPublishedData(user: String, node: URI): String
+  def getPublishedData(user: String, node: URI): Future[String]
 
-  def sendCallSignal(user: String, data: String): Unit
+  def sendCallSignal(user: String, data: String): Future[Unit]
 
-  def sendChatMessage(user: String, message: String): Unit
+  def sendChatMessage(user: String, message: String): Future[Unit]
 }
