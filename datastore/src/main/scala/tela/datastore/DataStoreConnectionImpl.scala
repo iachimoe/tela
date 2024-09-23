@@ -72,6 +72,9 @@ class DataStoreConnectionImpl(root: Path, user: String,
   private val memoryStore: MemoryStore = new MemoryStore(root.toFile)
   private val luceneSail = new LuceneSail()
   luceneSail.setParameter(LuceneSail.LUCENE_DIR_KEY, root.resolve(LuceneDirectoryName).toString)
+  // Using the EnglishAnalyzer for now for better stemming of English. Should probably be configurable.
+  luceneSail.setParameter(LuceneSail.ANALYZER_CLASS_KEY, "org.apache.lucene.analysis.en.EnglishAnalyzer")
+  luceneSail.setParameter(LuceneSail.QUERY_ANALYZER_CLASS_KEY, "org.apache.lucene.analysis.en.EnglishAnalyzer")
   luceneSail.setBaseSail(memoryStore)
 
   private[datastore] val repository = new SailRepository(luceneSail)

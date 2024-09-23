@@ -2,8 +2,8 @@ package tela.web
 
 import java.nio.file.{Path, Paths}
 import java.util.UUID
-import akka.actor.ActorRef
-import akka.pattern.ask
+import org.apache.pekko.actor.ActorRef
+import org.apache.pekko.pattern.ask
 import controllers.AssetsFinder
 
 import javax.inject.{Inject, Named}

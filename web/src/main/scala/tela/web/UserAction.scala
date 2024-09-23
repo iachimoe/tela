@@ -1,6 +1,6 @@
 package tela.web
 
-import akka.actor.ActorRef
+import org.apache.pekko.actor.ActorRef
 import javax.inject.{Inject, Named}
 import play.api.mvc._
 

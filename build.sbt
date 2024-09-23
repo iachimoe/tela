@@ -2,16 +2,17 @@ name := "tela"
 
 version in Global := "0.0"
 
-scalaVersion in Global := "3.3.1"
+scalaVersion in Global := "3.3.3"
 
 lazy val commonSettings = List(
-  scalacOptions ++= Seq(
+  //This doesn't seem to work properly in intellij anymore, hopefully will be fixed in the future
+  /*scalacOptions ++= Seq(
     "-Wvalue-discard",
     "-Xfatal-warnings"
   ),
-  scalacOptions in Test --= Seq( //TODO Why won't / syntax work here?
+  Test / scalacOptions --= Seq(
     "-Wvalue-discard",
-  )
+  )*/
 )
 
 lazy val tela = (project in file(".")) aggregate(runner, baseinterfaces, xmpp, web, datastore)

@@ -3,12 +3,15 @@ package tela.datastore
 import java.net.URI
 import java.nio.file.Paths
 import org.apache.tika.metadata.TikaCoreProperties
+import org.eclipse.rdf4j.model.IRI
+import org.eclipse.rdf4j.model.util.Values.iri
 import tela.baseinterfaces.DataStoreConnection.{FileFormatPredicateKey, FileNamePredicateKey, HashPredicateKey, TextContentPredicateKey}
 import tela.baseinterfaces.{BaseSpec, ComplexObject, DataType, SimpleObject}
 
 import java.util.UUID
 
 trait DataStoreBaseSpec extends BaseSpec {
+  protected def asIRI(uri: URI): IRI = iri(uri.toString)
   protected def urnFromUuid(uuid: UUID): URI = new URI(DataStoreConnectionImpl.URNBaseForUUIDs + uuid)
 
   protected val TestDataRoot = Paths.get("datastore/src/test/data")

@@ -159,7 +159,7 @@
                 "children": {
                   "http://www.opengis.net/ont/geosparql#asWKT": {
                     "properties": [
-                      "GPS Latitude", "GPS Longitude"
+                      "GPS:GPS Latitude", "GPS:GPS Longitude"
                     ],
                     "dataType": "Geo"
                   }

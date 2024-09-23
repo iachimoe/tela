@@ -40,7 +40,7 @@
 
         // BEGIN WEBSOCKET FUNCTIONS
 
-        function createEventsWebSocket(saveConnectionReference, onmessage) {
+        function createEventsWebSocket(saveConnectionReference, onmessage, tryNumber = 0) {
             const webSocket = new WebSocket([
                 window.location.protocol.toLowerCase() === 'https:' ? 'wss://' : 'ws://',
                 window.location.host,
@@ -49,7 +49,15 @@
             saveConnectionReference(webSocket)
             webSocket.onmessage = onmessage
             webSocket.onclose = () => {
-                createEventsWebSocket(saveConnectionReference, onmessage)
+                if (tryNumber > 0) {
+                    const timeout = (tryNumber < 6 ? Math.pow(tryNumber, 2) : 60) * 1000
+                    setTimeout(() => createEventsWebSocket(saveConnectionReference, onmessage, tryNumber + 1), timeout)
+                } else {
+                    createEventsWebSocket(saveConnectionReference, onmessage, tryNumber + 1)
+                }
+            }
+            webSocket.onopen = () => {
+                tryNumber = 0
             }
             return webSocket
         }
@@ -271,7 +279,8 @@
             width: 100%;
         }
 
-        @media screen and (max-width: 768px) {
+        /* At the time of writing this seems to be a fairly reasonable of determining whether to use mobile or desktop view */
+        @media only screen and (max-width: 768px) and (orientation: portrait), only screen and (max-width: 1179px) and (orientation: landscape) and (pointer: coarse) and (hover: none) {
             .main-apps {
                 grid-column: 1 / -1;
                 height: 100%;

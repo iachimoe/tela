@@ -1,19 +1,34 @@
 <configuration>
+    <import class="ch.qos.logback.classic.encoder.JsonEncoder"/>
+    <import class="ch.qos.logback.classic.AsyncAppender"/>
+    <import class="ch.qos.logback.core.ConsoleAppender"/>
 
-    <conversionRule conversionWord="coloredLevel" converterClass="play.api.libs.logback.ColoredLevel" />
-
-    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder>
-            <pattern>%coloredLevel %logger{15} - %message%n%xException{10}</pattern>
+    <appender name="STDOUT" class="ConsoleAppender">
+        <encoder class="JsonEncoder">
+            <withFormattedMessage>true</withFormattedMessage>
+            <withMessage>false</withMessage>
+            <withArguments>false</withArguments>
+            <withContext>false</withContext>
+            <withMDC>false</withMDC>
+            <withSequenceNumber>false</withSequenceNumber>
+            <withNanoseconds>false</withNanoseconds>
         </encoder>
     </appender>
 
-    <logger name="play" level="INFO" />
+    <appender name="ASYNCSTDOUT" class="AsyncAppender">
+        <queueSize>512</queueSize>
+        <discardingThreshold>0</discardingThreshold>
+        <neverBlock>false</neverBlock>
+        <appender-ref ref="STDOUT"/>
+    </appender>
+
+    <logger name="play" level="INFO"/>
     <logger name="application" level="DEBUG" />
     <logger name="tela" level="DEBUG" />
+    <logger name="org.jivesoftware.smack" level="DEBUG" />
 
     <root level="WARN">
-        <appender-ref ref="STDOUT" />
+        <appender-ref ref="ASYNCSTDOUT"/>
     </root>
 
 </configuration>

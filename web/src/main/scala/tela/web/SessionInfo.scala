@@ -1,6 +1,6 @@
 package tela.web
 
-import akka.actor.ActorRef
+import org.apache.pekko.actor.ActorRef
 import tela.baseinterfaces.{DataStoreConnection, XMPPSession}
 
 class SessionInfo(val xmppSession: XMPPSession, val dataStoreConnection: DataStoreConnection, val userData: UserData, val webSockets: Set[ActorRef] = Set()) {

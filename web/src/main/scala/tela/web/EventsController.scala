@@ -1,7 +1,7 @@
 package tela.web
 
-import akka.actor.{ActorRef, ActorSystem, Props}
-import akka.stream.Materializer
+import org.apache.pekko.actor.{ActorRef, ActorSystem, Props}
+import org.apache.pekko.stream.Materializer
 import javax.inject.{Inject, Named}
 import play.api.Logging
 import play.api.libs.json.JsValue

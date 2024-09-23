@@ -1,10 +1,10 @@
 package tela.web
 
-import akka.actor.ActorSystem
-import akka.stream.Materializer
-import akka.stream.scaladsl.{Flow, Keep}
-import akka.stream.testkit.scaladsl.{TestSink, TestSource}
-import akka.testkit.TestActor.{KeepRunning, NoAutoPilot}
+import org.apache.pekko.actor.ActorSystem
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.stream.scaladsl.{Flow, Keep}
+import org.apache.pekko.stream.testkit.scaladsl.{TestSink, TestSource}
+import org.apache.pekko.testkit.TestActor.{KeepRunning, NoAutoPilot}
 import org.scalatest.OptionValues
 import org.scalatest.matchers.should.Matchers._
 import play.api.http.websocket.{Message, TextMessage}

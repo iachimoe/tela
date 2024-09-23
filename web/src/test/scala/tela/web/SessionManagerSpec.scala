@@ -2,10 +2,10 @@ package tela.web
 
 import java.nio.file.{Path, Paths}
 import java.util.UUID
-import akka.actor.SupervisorStrategy.Resume
-import akka.actor.{Actor, ActorRef, ActorSystem, OneForOneStrategy, Props, SupervisorStrategy}
-import akka.pattern.ask
-import akka.testkit.{TestActorRef, TestProbe}
+import org.apache.pekko.actor.SupervisorStrategy.Resume
+import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, OneForOneStrategy, Props, SupervisorStrategy}
+import org.apache.pekko.pattern.ask
+import org.apache.pekko.testkit.{TestActorRef, TestProbe}
 import com.typesafe.config.ConfigFactory
 import org.mockito.Mockito._
 import org.mockito.invocation.InvocationOnMock
@@ -44,7 +44,7 @@ class SessionManagerSpec extends WebBaseSpec {
       }
     }
 
-    implicit val actorSystem = ActorSystem("actor", ConfigFactory.parseString("blocking-operations-dispatcher = akka.actor.default-dispatcher"))
+    implicit val actorSystem = ActorSystem("actor", ConfigFactory.parseString("blocking-operations-dispatcher = pekko.actor.default-dispatcher"))
     val supervisorTarget = TestProbe()
     val supervisor = actorSystem.actorOf(Props(new Supervisor(supervisorTarget.ref)))
 

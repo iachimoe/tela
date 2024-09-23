@@ -1,6 +1,6 @@
 name := "runner"
 
-libraryDependencies += "com.typesafe.play" %% "play-guice" % "2.9.0"
+libraryDependencies += "org.playframework" %% "play-guice" % "3.0.5"
 
 //TODO This is not nice right now. Have to explicitly run sbt compile before
 //running in dev environment to make sure deps are picked up
@@ -23,4 +23,12 @@ packageWebDeps := {
 enablePlugins(AshScriptPlugin)
 Docker / packageName := "tela"
 dockerBuildOptions += "--no-cache"
-dockerBaseImage := "eclipse-temurin:17-alpine"
+dockerBaseImage := "eclipse-temurin:21-alpine"
+
+//dockerBuildxPlatforms := Seq("linux/arm64/v8", "linux/amd64") //WHYYYY DOESN'T THIS WORK????
+//From here https://github.com/sbt/sbt-native-packager/issues/1548 doesn't seem to work
+/*dockerBuildCommand := dockerExecCommand.value ++ (
+  if (dockerBuildxPlatforms.value.isEmpty) { Seq("build") }
+  else { Seq("buildx", "build",  s"--platform=${dockerBuildxPlatforms.value.mkString(",")}") }
+  ++ dockerBuildOptions.value ++ Seq(".")
+)*/

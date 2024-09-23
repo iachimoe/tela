@@ -15,8 +15,6 @@ class ICalParserSpec extends DataStoreBaseSpec {
     metadata.get(TikaCoreProperties.DESCRIPTION) should === ("Domain-Driven Design London / DDD London\nTuesday, July 5 at 6:30 PM")
     metadata.get(TikaCoreProperties.LATITUDE) should === ("51.52")
     metadata.get(TikaCoreProperties.LONGITUDE) should === ("-0.10")
-    //TODO I tried running this in a bunch of timezones. It passes in most that I tried but fails in Mexico City
-    //I'm not sure why this is - to the extent that I investigated, it seemed like it might be an ical4j issue
     metadata.get(TikaCoreProperties.METADATA_DATE) should === ("2016-07-05T17:30:00Z")
   }
 

@@ -1,10 +1,11 @@
 import java.nio.file.{Path, Paths}
 import java.util.UUID
-import Module._
-import akka.actor.Props
+import Module.*
+import org.apache.pekko.actor.Props
 import com.google.inject.AbstractModule
 import com.google.inject.name.Names
-import play.api.libs.concurrent.AkkaGuiceSupport
+import org.jivesoftware.smack.debugger.{JulDebugger, ReflectionDebuggerFactory}
+import play.api.libs.concurrent.PekkoGuiceSupport
 import play.api.libs.json.JsArray
 import play.api.{Configuration, Environment}
 import tela.baseinterfaces.{ComplexObject, DataStoreConnection, XMPPSession, XMPPSettings}
@@ -56,8 +57,11 @@ object Module {
   }
 }
 
-class Module(environment: Environment, configuration: Configuration) extends AbstractModule with AkkaGuiceSupport {
+class Module(environment: Environment, configuration: Configuration) extends AbstractModule with PekkoGuiceSupport {
   override def configure(): Unit = {
+    // Perhaps this should be done in the xmpp component itself, but it feels more natural to control it at a high level.
+    ReflectionDebuggerFactory.setDebuggerClass(classOf[JulDebugger])
+
     val xmppSettings = loadXMPPSettings(configuration)
     val dataStoreSettings = loadDataStoreSettings(configuration, MappingsFile)
     val supportedLanguages = getSupportedLanguages(LanguagesFile)

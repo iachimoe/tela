@@ -3,8 +3,8 @@ package tela.web
 import java.net.URI
 import java.nio.file.Path
 import java.util.UUID
-import akka.actor.{Actor, ActorLogging, ActorRef, PoisonPill}
-import akka.pattern.pipe
+import org.apache.pekko.actor.{Actor, ActorLogging, ActorRef, PoisonPill}
+import org.apache.pekko.pattern.pipe
 import play.api.libs.json.{Json, Writes}
 import tela.baseinterfaces._
 import tela.web.JSONConversions._

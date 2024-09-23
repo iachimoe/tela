@@ -2,7 +2,7 @@ package tela.web
 
 import java.util.UUID
 
-import akka.actor.{Actor, ActorRef}
+import org.apache.pekko.actor.{Actor, ActorRef}
 import play.api.Logging
 import play.api.libs.json.Reads._
 import play.api.libs.json._

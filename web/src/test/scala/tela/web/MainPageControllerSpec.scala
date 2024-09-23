@@ -2,8 +2,8 @@ package tela.web
 
 import java.io.StringWriter
 import java.nio.file.{Files, Path, Paths}
-import akka.actor.ActorRef
-import akka.testkit.TestActor.NoAutoPilot
+import org.apache.pekko.actor.ActorRef
+import org.apache.pekko.testkit.TestActor.NoAutoPilot
 import org.scalatest.matchers.should.Matchers._
 import play.api.http.{HeaderNames, Status}
 import play.api.libs.json.JsValue

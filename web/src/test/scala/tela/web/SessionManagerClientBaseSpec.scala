@@ -1,8 +1,8 @@
 package tela.web
 
-import akka.actor.{ActorRef, ActorSystem, FSM}
-import akka.testkit.TestActor.{AutoPilot, KeepRunning, NoAutoPilot}
-import akka.testkit.{TestActor, TestProbe}
+import org.apache.pekko.actor.{ActorRef, ActorSystem, FSM}
+import org.apache.pekko.testkit.TestActor.{AutoPilot, KeepRunning, NoAutoPilot}
+import org.apache.pekko.testkit.{TestActor, TestProbe}
 import org.mockito.Mockito._
 import controllers.AssetsFinder
 import play.api.http.{HeaderNames, Status}

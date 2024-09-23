@@ -1,7 +1,7 @@
 package tela.web
 
-import akka.actor.ActorRef
-import akka.testkit.TestActor.NoAutoPilot
+import org.apache.pekko.actor.ActorRef
+import org.apache.pekko.testkit.TestActor.NoAutoPilot
 import org.scalatest.matchers.should.Matchers._
 import play.api.http.{ContentTypes, Status}
 import play.api.mvc._

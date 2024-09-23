@@ -1,7 +1,7 @@
 package tela.web
 
 import java.nio.file.Paths
-import akka.testkit.TestActor.NoAutoPilot
+import org.apache.pekko.testkit.TestActor.NoAutoPilot
 import org.scalatest.matchers.should.Matchers._
 import play.api.http.Status
 import play.api.mvc.Cookie

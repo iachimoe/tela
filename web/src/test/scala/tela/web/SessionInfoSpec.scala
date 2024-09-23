@@ -1,7 +1,7 @@
 package tela.web
 
-import akka.actor.{ActorRef, ActorSystem}
-import akka.testkit.TestProbe
+import org.apache.pekko.actor.{ActorRef, ActorSystem}
+import org.apache.pekko.testkit.TestProbe
 import org.scalatest.matchers.should.Matchers._
 import tela.baseinterfaces.{DataStoreConnection, XMPPSession}
 

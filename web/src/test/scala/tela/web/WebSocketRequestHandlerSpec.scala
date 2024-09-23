@@ -1,8 +1,8 @@
 package tela.web
 
-import akka.actor.{ActorRef, PoisonPill}
-import akka.testkit.TestActor.NoAutoPilot
-import akka.testkit.TestActorRef
+import org.apache.pekko.actor.{ActorRef, PoisonPill}
+import org.apache.pekko.testkit.TestActor.NoAutoPilot
+import org.apache.pekko.testkit.TestActorRef
 import play.api.libs.json.{JsValue, Json}
 import tela.baseinterfaces.Presence
 import tela.web.JSONConversions._

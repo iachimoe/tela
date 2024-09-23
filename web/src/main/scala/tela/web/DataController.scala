@@ -2,8 +2,8 @@ package tela.web
 
 import java.net.URI
 import java.nio.file.{FileSystem, FileSystems, Files, Path, Paths, ProviderNotFoundException}
-import akka.actor.ActorRef
-import akka.pattern.ask
+import org.apache.pekko.actor.ActorRef
+import org.apache.pekko.pattern.ask
 
 import javax.inject.{Inject, Named}
 import play.api.Logging
@@ -90,8 +90,8 @@ class DataController @Inject()(
   }
 
   // Was originally going to do the file extraction in the data layer, but as the returned by FileSystem objects
-  // contain a reference to the FileSystem, it seems unwise to be passing them around via Akka,
-  // especially if we want to run the data layer in a different JVM in the future, using, for example, Akka cluster.
+  // contain a reference to the FileSystem, it seems unwise to be passing them around via Pekko,
+  // especially if we want to run the data layer in a different JVM in the future, using, for example, Pekko cluster.
   private def getChildFromArchive(archive: Path, childPath: String): Future[Option[(Path, Vector[FileSystem])]] = {
     if (childPath.isEmpty) Future.successful(None)
     else Future {

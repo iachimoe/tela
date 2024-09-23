@@ -1,7 +1,7 @@
 package misc
 
-import akka.actor.SupervisorStrategy.{Resume, Stop}
-import akka.actor.{ActorInitializationException, ActorKilledException, DeathPactException, OneForOneStrategy, SupervisorStrategy, SupervisorStrategyConfigurator}
+import org.apache.pekko.actor.SupervisorStrategy.{Resume, Stop}
+import org.apache.pekko.actor.{ActorInitializationException, ActorKilledException, DeathPactException, OneForOneStrategy, SupervisorStrategy, SupervisorStrategyConfigurator}
 import org.slf4j.LoggerFactory
 
 class GuardianSupervisorStrategy extends SupervisorStrategyConfigurator {

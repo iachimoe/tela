@@ -1,7 +1,7 @@
 package tela.web
 
-import akka.actor.ActorRef
-import akka.pattern.ask
+import org.apache.pekko.actor.ActorRef
+import org.apache.pekko.pattern.ask
 
 import javax.inject.{Inject, Named}
 import play.api.Logging

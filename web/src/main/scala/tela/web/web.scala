@@ -4,9 +4,9 @@ import java.io.StringWriter
 import java.nio.file.{Files, Path, Paths}
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-import akka.actor.ActorRef
-import akka.pattern.ask
-import akka.util.Timeout
+import org.apache.pekko.actor.ActorRef
+import org.apache.pekko.pattern.ask
+import org.apache.pekko.util.Timeout
 import controllers.AssetsFinder
 import play.api.Logging
 import play.api.mvc.RequestHeader

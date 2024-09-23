@@ -4,15 +4,15 @@ import org.jivesoftware.smack.ConnectionConfiguration.SecurityMode
 
 import java.io.StringReader
 import org.jivesoftware.smack.SmackException.EndpointConnectionException
-import org.jivesoftware.smack._
+import org.jivesoftware.smack.*
 import org.jivesoftware.smack.filter.StanzaFilter
 import org.jivesoftware.smack.iqrequest.{AbstractIqRequestHandler, IQRequestHandler}
 import org.jivesoftware.smack.packet.IQ.Type
 import org.jivesoftware.smack.packet.Presence.Mode
 import org.jivesoftware.smack.packet.id.StandardStanzaIdSource
-import org.jivesoftware.smack.packet.{Presence, _}
+import org.jivesoftware.smack.packet.{Presence, *}
 import org.jivesoftware.smack.provider.ProviderManager
-import org.jivesoftware.smack.roster.Roster
+import org.jivesoftware.smack.roster.{PresenceEventListener, Roster}
 import org.jivesoftware.smack.roster.Roster.SubscriptionMode
 import org.jivesoftware.smack.roster.packet.RosterPacket
 import org.jivesoftware.smack.roster.packet.RosterPacket.Item
@@ -22,18 +22,19 @@ import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration
 import org.jivesoftware.smack.util.PacketParserUtils
 import org.jivesoftware.smackx.iqregister.packet.Registration
 import org.jivesoftware.smackx.ping.packet.Ping
+import org.jxmpp.jid.{BareJid, FullJid, Jid}
 import org.jxmpp.jid.impl.JidCreate
 import org.jxmpp.jid.parts.Resourcepart
-import org.mockito.ArgumentMatchers._
-import org.mockito.Mockito._
+import org.mockito.ArgumentMatchers.*
+import org.mockito.Mockito.*
 import org.mockito.{ArgumentCaptor, ArgumentMatcher}
-import org.scalatest.matchers.should.Matchers._
+import org.scalatest.matchers.should.Matchers.*
 import org.scalatest.OptionValues
-import tela.baseinterfaces._
+import tela.baseinterfaces.*
 import tela.xmpp.SmackXMPPSession.{CallSignal, CallSignalElementName, DefaultPriority, DefaultStatusText, TelaURN}
 
 import scala.concurrent.Await
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
 import scala.xml.{Elem, NodeSeq, XML}
 import scala.concurrent.ExecutionContext.global
 
@@ -161,7 +162,6 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
     verify(changePasswordConnection).disconnect()
   }
 
-  //TODO This fails intermittently, might be some kind of race condition in Smack
   "getContactList" should "send the user's contacts and self presence to the session listener" in testEnvironment { environment =>
     val session = createSessionWithUsername(environment.connection, environment.sessionListener)
 
@@ -174,6 +174,9 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
     // We use the index 0 because the roster listener gets added first, then the chat listener (in accordance with our connectToServer method)
     val stanzaListener = getValueFromArgumentCaptor(packetListenerCaptor, 0)
 
+    val presenceEventTracker = new CountingPresenceEventListener()
+    Roster.getInstanceFor(environment.connection).addPresenceEventListener(presenceEventTracker)
+
     sendContactAddedEventToHandler(contactListRequestHandler, TestContact1)
     sendPresenceToStanzaListener(stanzaListener, TestContact1, Presence.Mode.away)
 
@@ -184,9 +187,11 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
 
     reset(environment.sessionListener) //Need to do this to ensure the calls to add the contacts in the first place don't interfere with results
 
+    //There was a race condition causing the test to fail,
+    //so now we wait for a while if the number of calls to presence available does not match what we expect.
+    presenceEventTracker.waitForPresenceAvailableCount(3)
     Await.result(session.getContactList(), TestAwaitTimeout)
 
-    //It seems that the order that the contacts come back in depends on the precise content of the JIDs. Changing the values of the test contacts may change the order
     verify(environment.sessionListener).contactsAdded(Vector(ContactInfo(TestContact1, tela.baseinterfaces.Presence.Away), ContactInfo(TestContact2, tela.baseinterfaces.Presence.Away)))
     verify(environment.sessionListener).selfPresenceChanged(tela.baseinterfaces.Presence.DoNotDisturb)
   }
@@ -464,6 +469,30 @@ class SmackXMPPSessionSpec extends BaseSpec with OptionValues {
 
   private def verifyPresencePacketSent(connection: TestableXMPPConnection, presence: Presence): Unit = {
     verify(connection).sendStanzaInternal(argThat(new PresenceMatcher(presence)))
+  }
+
+  class CountingPresenceEventListener extends PresenceEventListener {
+    private var presenceAvailableCount = 0
+
+    def waitForPresenceAvailableCount(expectedAmount: Int): Unit = {
+      var timeWaited = 0
+      while (presenceAvailableCount < expectedAmount && timeWaited < TestAwaitTimeout.toMillis) {
+        Thread.sleep(100)
+        timeWaited += 100
+      }
+    }
+
+    override def presenceAvailable(address: FullJid, availablePresence: Presence): Unit = {
+      presenceAvailableCount += 1
+    }
+
+    override def presenceUnavailable(address: FullJid, presence: Presence): Unit = {}
+
+    override def presenceError(address: Jid, errorPresence: Presence): Unit = {}
+
+    override def presenceSubscribed(address: BareJid, subscribedPresence: Presence): Unit = {}
+
+    override def presenceUnsubscribed(address: BareJid, unsubscribedPresence: Presence): Unit = {}
   }
 
   private class ChatMessagePacketMatcher(private val expected: Message) extends ArgumentMatcher[Message] {

@@ -1,9 +1,9 @@
 package tela.web
 
 import java.nio.file.{Files, Path, Paths}
-import akka.actor.ActorRef
-import akka.stream.Materializer
-import akka.testkit.TestActor.NoAutoPilot
+import org.apache.pekko.actor.ActorRef
+import org.apache.pekko.stream.Materializer
+import org.apache.pekko.testkit.TestActor.NoAutoPilot
 import org.scalatest.matchers.should.Matchers._
 import play.api.http._
 import play.api.inject.guice.GuiceApplicationBuilder

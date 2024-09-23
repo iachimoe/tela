@@ -8,8 +8,9 @@
     // BEGIN CONTENT DATA TYPES
 
     class Content {
-        constructor(name, fileLocation, encodingFormat, expandToFillContainer) {
+        constructor(name, alternateName, fileLocation, encodingFormat, expandToFillContainer) {
             this.name = name;
+            this.alternateName = alternateName;
             this.fileLocation = fileLocation;
             this.encodingFormat = encodingFormat;
             this.expandToFillContainer = expandToFillContainer;
@@ -20,11 +21,7 @@
         }
 
         displayName() {
-            if (this.name === null) {
-                return this.encodingFormat;
-            } else {
-                return this.name;
-            }
+            return this.name || this.alternateName || this.encodingFormat
         }
 
         viewObject() {
@@ -68,8 +65,8 @@
     }
 
     class AudioContent extends Content {
-        constructor(name, fileLocation, encodingFormat) {
-            super(name, fileLocation, encodingFormat, false);
+        constructor(name, alternateName, fileLocation, encodingFormat) {
+            super(name, alternateName, fileLocation, encodingFormat, false);
         }
 
         icon() { return "far fa-file-audio" };
@@ -86,8 +83,8 @@
     }
 
     class ImageContent extends Content {
-        constructor(name, fileLocation, encodingFormat) {
-            super(name, fileLocation, encodingFormat, false);
+        constructor(name, alternateName, fileLocation, encodingFormat) {
+            super(name, alternateName, fileLocation, encodingFormat, false);
         }
 
         icon() { return "far fa-file-image" };
@@ -100,8 +97,8 @@
     }
 
     class VideoContent extends Content {
-        constructor(name, fileLocation, encodingFormat) {
-            super(name, fileLocation, encodingFormat, false);
+        constructor(name, alternateName, fileLocation, encodingFormat) {
+            super(name, alternateName, fileLocation, encodingFormat, false);
         }
 
         icon() { return "far fa-file-video" };
@@ -122,8 +119,8 @@
     }
 
     class CSVContent extends Content {
-        constructor(name, fileLocation, encodingFormat) {
-            super(name, fileLocation, encodingFormat, true);
+        constructor(name, alternateName, fileLocation, encodingFormat) {
+            super(name, alternateName, fileLocation, encodingFormat, true);
         }
 
         icon() { return "fas fa-table" };
@@ -200,8 +197,8 @@
     }
 
     class PDFContent extends Content {
-        constructor(name, fileLocation, encodingFormat) {
-            super(name, fileLocation, encodingFormat, true);
+        constructor(name, alternateName, fileLocation, encodingFormat) {
+            super(name, alternateName, fileLocation, encodingFormat, true);
         }
 
         icon() { return "far fa-file-pdf" };
@@ -247,26 +244,27 @@
                 const encodingFormat = fullEncodingFormat.split(';')[0]
                 const fileLocation = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "identifier");
                 const name = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "name");
+                const alternateName = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "alternateName");
 
                 let contentObject;
                 switch (encodingFormat) {
                     case 'audio/mp4':
-                        contentObject = new AudioContent(name, fileLocation, encodingFormat);
+                        contentObject = new AudioContent(name, alternateName, fileLocation, encodingFormat);
                         break;
                     case 'image/jpeg':
-                        contentObject = new ImageContent(name, fileLocation, encodingFormat);
+                        contentObject = new ImageContent(name, alternateName, fileLocation, encodingFormat);
                         break;
                     case 'video/mp4':
-                        contentObject = new VideoContent(name, fileLocation, encodingFormat);
+                        contentObject = new VideoContent(name, alternateName, fileLocation, encodingFormat);
                         break;
                     case 'text/csv':
-                        contentObject = new CSVContent(name, fileLocation, encodingFormat);
+                        contentObject = new CSVContent(name, alternateName, fileLocation, encodingFormat);
                         break;
                     case 'application/pdf':
-                        contentObject = new PDFContent(name, fileLocation, encodingFormat);
+                        contentObject = new PDFContent(name, alternateName, fileLocation, encodingFormat);
                         break;
                     default:
-                        contentObject = new Content(name, fileLocation, encodingFormat, true);
+                        contentObject = new Content(name, alternateName, fileLocation, encodingFormat, true);
                 }
 
                 const tr = document.createElement('tr');
@@ -318,7 +316,7 @@
         client.open("PUT", "/data", true);
 
         client.upload.addEventListener("progress", function(e) {
-            const percentComplete = (100 - (e.loaded / e.total * 100));
+            const percentComplete = Number(100 - (e.loaded / e.total * 100)).toFixed(0)
             document.getElementById("uploadStatus").innerHTML = percentComplete + "%"
         }, false);
 
