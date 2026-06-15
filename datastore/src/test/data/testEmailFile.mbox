@@ -1,0 +1,19 @@
+From alice.bobson@example.com  Fri Sep 21 10:46:31 2001
+From: "Bobson,Alice" <alice.bobson@example.com>
+To: Bob Alison <bob.alison@example.com>, John Doe <john.doe@example.com>
+Cc: Jane Doe <jane.doe@example.com>, Joe Bloggs <joe.bloggs@example.com>
+Date: Fri, 21 Sep 2001 09:46:31 +0100
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="b"
+
+--b
+Content-Type: text/plain; charset=UTF-8
+
+Test body content
+
+--b
+Content-Type: text/plain
+Content-Disposition: attachment; filename="a.txt"
+
+Test attachment content
+--b--

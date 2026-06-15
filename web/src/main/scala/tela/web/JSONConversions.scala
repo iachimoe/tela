@@ -29,6 +29,7 @@ object JSONConversions {
   val GetContactListAction = "getContactList"
   val AddContactAction = "addContact"
 
+  //TODO Naming is confusing here, too similar to AddContact. Consider changing
   case class AddContacts(contacts: Vector[ContactInfo])
 
   val AddContactsAction = "addContacts"

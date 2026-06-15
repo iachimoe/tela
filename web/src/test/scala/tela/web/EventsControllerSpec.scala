@@ -47,7 +47,7 @@ class EventsControllerSpec extends SessionManagerClientBaseSpec with OptionValue
     val flow: Flow[Message, Message, _] = result.toOption.value
     implicit val m: Materializer = environment.client.materializer
     implicit val as: ActorSystem = environment.sessionManagerProbe.system
-    val (receivesMessagesFromBrowser, sendsMessagesToBrowser) = TestSource.probe[Message].via(flow).toMat(TestSink.probe[Message])(Keep.both).run()
+    val (receivesMessagesFromBrowser, sendsMessagesToBrowser) = TestSource[Message]().via(flow).toMat(TestSink[Message]())(Keep.both).run()
 
     environment.sessionManagerProbe.expectMsg(GetSession(TestSessionId))
     val webSocketActorRegistration = environment.sessionManagerProbe.expectMsgType[RegisterWebSocket]

@@ -1,13 +1,13 @@
 package tela.datastore
 
-import org.eclipse.rdf4j.model.{Model, Resource}
+import org.eclipse.rdf4j.model.{BNode, Model, Resource}
 
 import java.net.URI
 import java.nio.file.{Files, Path, StandardCopyOption}
 import java.util.UUID
 import org.eclipse.rdf4j.model.impl.{LinkedHashModel, SimpleValueFactory}
-import org.eclipse.rdf4j.model.util.Values.{bnode, iri, literal}
-import org.eclipse.rdf4j.model.util.{ModelBuilder, Models}
+import org.eclipse.rdf4j.model.util.Values.{bnode, literal}
+import org.eclipse.rdf4j.model.util.ModelBuilder
 import org.eclipse.rdf4j.model.vocabulary.{GEO, GEOF, RDF, XSD}
 import org.eclipse.rdf4j.rio.RDFFormat
 import org.mockito.ArgumentMatchers.*
@@ -16,6 +16,7 @@ import org.mockito.{ArgumentMatcher, ArgumentMatchers}
 import org.scalatest.matchers.{MatchResult, Matcher}
 import org.scalatest.matchers.should.Matchers.*
 import tela.baseinterfaces.{ComplexObject, XMPPSession}
+import tela.datastore.MetadataMapper.GeoCoordinatesLiteralType
 
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDateTime, ZoneId}
@@ -30,16 +31,23 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   private val TestMediaItemsRoot = BaseTestDir.resolve(TestUsername).resolve(DataStoreConnectionImpl.MediaItemsFolderName)
 
   private val AdditionalTestUUID1 = UUID.fromString("5233899b-ba7e-504f-bb83-ceebac62decf")
+  private val AdditionalTestUUID1AsURN = urnFromUuid(AdditionalTestUUID1)
   private val AdditionalTestUUID2 = UUID.fromString("3bda1540-d089-5a1a-8f0d-94eba8068e58")
+  private val AdditionalTestUUID2AsURN = urnFromUuid(AdditionalTestUUID2)
   private val AdditionalTestUUID3 = UUID.fromString("e4d2c732-bbc1-5ef4-869f-5007ceb55f6e")
+  private val AdditionalTestUUID3AsURN = urnFromUuid(AdditionalTestUUID3)
+  private val AdditionalTestUUID4 = UUID.fromString("f81d4fae-7dec-11d0-a765-00a0c91e6bf6")
+  private val AdditionalTestUUID4AsURN = urnFromUuid(AdditionalTestUUID4)
+  private val AdditionalTestUUID5 = UUID.fromString("6ba7b810-9dad-11d1-80b4-00c04fd430c8")
+  private val AdditionalTestUUID5AsURN = urnFromUuid(AdditionalTestUUID5)
 
   // This matches the format of dates that RDF4J produces
   private val TestDateWithIsoInstantFormat = TestDateAsLocalDateTime.atZone(ZoneId.of("UTC")).format(
     DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSX"))
 
-  private val TestProfileInfoAsJSON = s"""[
+  private def testProfileInfoAsJSON(uri: URI) = s"""[
                                   |    {
-                                  |        "@id": "$TestDataObjectUri",
+                                  |        "@id": "$uri",
                                   |        "@type": [ "http://xmlns.com/foaf/0.1/Person" ],
                                   |        "http://xmlns.com/foaf/0.1/familyName": [
                                   |            {
@@ -54,10 +62,10 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
                                   |    }
                                   |]""".stripMargin
 
-  private val TestFamilyNameFromProfileInfo =
+  private def testFamilyNameFromProfileInfo(uri: URI) =
     s"""[
        |    {
-       |        "@id": "$TestDataObjectUri",
+       |        "@id": "$uri",
        |        "http://xmlns.com/foaf/0.1/familyName": [
        |            {
        |                "@value": "Foo"
@@ -66,66 +74,153 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
        |    }
        |]""".stripMargin
 
-  // Note that the HTML tags are stripped out of the text content
-  private val TestHTMLFileMetadata = new ModelBuilder().subject(asIRI(URNWithTestUUIDAsURI)).
-    add(RDF.TYPE, asIRI(GenericMediaFileType)).
-    add(asIRI(HashPredicate), HashOfTestHtmlFile).
-    add(asIRI(TextContentPredicate), fileContentLikeFromTika(11, "Hello")).
-    add(asIRI(FileNamePredicate), TestHtmlFileName.toString).
-    add(asIRI(FileFormatPredicate), s"$TextHtmlContentType; charset=ISO-8859-1").build()
-
-  private val TestICalFileMetadata = new ModelBuilder().subject(asIRI(URNWithTestUUIDAsURI)).
-    add(RDF.TYPE, asIRI(GenericMediaFileType)).
-    add(asIRI(HashPredicate), HashOfTestIcalFile).
-    add(asIRI(FileNamePredicate), TestIcalWithEventFileName.toString).
-    add(asIRI(FileFormatPredicate), ICalContentType).
-    add(iri("http://schema.org/name"), "DDD London #3 - Strategic and Collaborative Domain-Driven Design").build()
-
-  private def testMP3FileMetadata(id: UUID, hash: String, prefixedNewlines: Int, lastModified: String) = {
-    val authorNodeSubject = bnode()
-    val authorNode = new ModelBuilder().subject(authorNodeSubject).
-      add(RDF.TYPE, iri("http://schema.org/Person")).
-      add(iri("http://schema.org/name"), "tela").build()
-
-    new ModelBuilder(authorNode).subject(s"${DataStoreConnectionImpl.URNBaseForUUIDs}$id").
-      add(RDF.TYPE, asIRI(MP3ObjectType)).
-      add(asIRI(HashPredicate), hash).
-      add(asIRI(FileNamePredicate), TestMP3FileName.toString).
-      add(asIRI(FileFormatPredicate), MP3ContentType).
-      add(iri("http://schema.org/author"), authorNodeSubject).
-      add(iri("http://schema.org/genre"), "Rock").
-      add(iri("http://schema.org/name"), "Short, Silent MP3").
-      add(iri("http://schema.org/lastModified"), literal(lastModified, XSD.DATETIME)).
-      add(asIRI(TextContentPredicate), fileContentLikeFromTika(prefixedNewlines,
-        "Short, Silent MP3\n\nShort, Silent MP3\ntela\nRock\n0.15673469\nXXX - \nSmall MP3 for testing tela")).build()
+  private def createRDFModel_multipleValues(subject: URI, subjectType: URI, properties: Map[URI, Vector[Object]], maybeInitial: Option[Model]) = {
+    val builder = maybeInitial.map(initial => new ModelBuilder(initial)).getOrElse(new ModelBuilder())
+    builder.subject(asIRI(subject)).add(RDF.TYPE, asIRI(subjectType))
+    properties.foreach {
+      case (predicate, objectValues) => objectValues.foreach(o => builder.add(asIRI(predicate), o))
+    }
+    builder.build()
   }
 
-  private def testTextFileMetadata(id: UUID, hash: String, prefixedNewlines: Int, lastModified: String) =
-    new ModelBuilder().subject(s"${DataStoreConnectionImpl.URNBaseForUUIDs}$id").
-      add(RDF.TYPE, asIRI(GenericMediaFileType)).
-      add(asIRI(HashPredicate), hash).
-      add(asIRI(FileNamePredicate), TestTextFileName.toString).
-      add(asIRI(TextContentPredicate), fileContentLikeFromTika(prefixedNewlines, fileContent(TestTextFile))).
-      add(asIRI(FileFormatPredicate), s"$PlainTextContentType; charset=ISO-8859-1").
-      add(iri("http://schema.org/lastModified"), literal(lastModified, XSD.DATETIME)).
-      add(iri("http://schema.org/name"), TestTextFileName).build()
+  private def createRDFModel(subject: URI, subjectType: URI, properties: Map[URI, Object], maybeInitial: Option[Model] = None) = {
+    createRDFModel_multipleValues(subject, subjectType, properties.view.mapValues(o => Vector(o)).toMap, maybeInitial)
+  }
 
-  private val TestZipFileMetadata = new ModelBuilder().subject(asIRI(URNWithTestUUIDAsURI)).
-    add(RDF.TYPE, asIRI(GenericMediaFileType)).
-    add(asIRI(HashPredicate), HashOfTestZipFile).
-    add(asIRI(FileNamePredicate), TestZipFileName.toString).
-    add(asIRI(FileFormatPredicate), ZipFileContentType).
-    add(asIRI(TextContentPredicate),
-      fileContentLikeFromTika(10, s"music/$TestMP3FileName") + fileContentLikeFromTika(2, "testTextFile.zip") + "\n"
-    ).build()
+  // Note that the HTML tags are stripped out of the text content
+  private def testHTMLFileMetadata(uri: URI) =
+    createRDFModel(uri, GenericMediaFileType, Map(
+      DataLocationPredicate -> HashOfTestHtmlFile,
+      TextContentPredicate -> fileContentLikeFromTika(13, "Hello", 1),
+      FileNamePredicate -> TestHtmlFileName.toString,
+      FileFormatPredicate -> s"$TextHtmlContentType; charset=ISO-8859-1"))
 
-  private val TestInnerZipFileMetadata = new ModelBuilder().subject(s"${DataStoreConnectionImpl.URNBaseForUUIDs}$AdditionalTestUUID3").
-    add(RDF.TYPE, asIRI(GenericMediaFileType)).
-    add(asIRI(HashPredicate), s"$HashOfTestZipFile/testTextFile.zip").
-    add(asIRI(FileNamePredicate), "testTextFile.zip").
-    add(asIRI(FileFormatPredicate), ZipFileContentType).
-    add(asIRI(TextContentPredicate), fileContentLikeFromTika(17, s"$TestTextFileName\n")).
-    add(iri("http://schema.org/lastModified"), literal("2022-07-22T12:57:01.000Z", XSD.DATETIME)).build()
+  private def testICalFileMetadata(uri: URI) =
+    createRDFModel(uri, GenericMediaFileType, Map(
+      DataLocationPredicate -> HashOfTestIcalFile,
+      FileNamePredicate -> TestIcalWithEventFileName.toString,
+      FileFormatPredicate -> ICalContentType,
+      NamePredicate -> "DDD London #3 - Strategic and Collaborative Domain-Driven Design"))
+
+  private def testEmailAttachment(uri: URI) =
+    createRDFModel(uri, GenericMediaFileType, Map(
+      DataLocationPredicate -> (HashOfTestEmailFile + "/a.txt"), //TODO This path is wrong, as it doesn't reference which email contains it
+      FileNamePredicate -> "a.txt",
+      NamePredicate -> "a.txt",
+      TextContentPredicate -> fileContentLikeFromTika(20, "Test attachment content", 1),
+      FileFormatPredicate -> s"$PlainTextContentType; charset=US-ASCII"))
+
+  private def testMbox(uri: URI) =
+    createRDFModel(uri, GenericMediaFileType, Map(
+      DataLocationPredicate -> HashOfTestEmailFile,
+      FileNamePredicate -> TestEmailFileName.toString,
+      FileFormatPredicate -> "application/mbox"))
+
+  private def testEmailFileMetadata(uri: URI) = {
+    def createEmailPerson(objectTypeName: String, email: String, maybeName: Option[String]): (BNode, Model) = {
+      val nodeSubject = bnode()
+      val node = new ModelBuilder().subject(nodeSubject).
+        add(RDF.TYPE, asIRI(SchemaDotOrgBase.resolve(objectTypeName))).
+        add(asIRI(EmailPredicate), email)
+
+      nodeSubject -> maybeName.map(name => node.add(asIRI(NamePredicate), name)).getOrElse(node).build()
+    }
+
+    val (fromNodeSubject, fromNode) = createEmailPerson("Person", "alice.bobson@example.com", Some("Bobson,Alice"))
+    val (to1NodeSubject, to1Node) = createEmailPerson("ContactPoint", "Bob Alison <bob.alison@example.com>", None)
+    val (to2NodeSubject, to2Node) = createEmailPerson("ContactPoint", "John Doe <john.doe@example.com>", None)
+    val (cc1NodeSubject, cc1Node) = createEmailPerson("ContactPoint", "Jane Doe <jane.doe@example.com>", None)
+    val (cc2NodeSubject, cc2Node) = createEmailPerson("ContactPoint", "Joe Bloggs <joe.bloggs@example.com>", None)
+    val emailPersonModel = new LinkedHashModel()
+
+    //The presence of these two may be due to a bug in the tika parser...
+    val (toWrongNodeSubject, toWrongNode) = createEmailPerson("ContactPoint", "Bob Alison <bob.alison@example.com>, John Doe <john.doe@example.com>", None)
+    val (ccWrongNodeSubject, ccWrongNode) = createEmailPerson("ContactPoint", "Jane Doe <jane.doe@example.com>, Joe Bloggs <joe.bloggs@example.com>", None)
+
+    Vector(fromNode, to1Node, to2Node, cc1Node, cc2Node, toWrongNode, ccWrongNode).foreach(emailPersonModel.addAll)
+
+    createRDFModel_multipleValues(uri, EmailObjectType, Map(
+      SenderPredicate -> Vector(fromNodeSubject),
+        ToRecipientPredicate -> Vector(to1NodeSubject, to2NodeSubject, toWrongNodeSubject),
+        CcRecipientPredicate -> Vector(cc1NodeSubject, cc2NodeSubject, ccWrongNodeSubject),
+        DateSentPredicate -> Vector(literal("2001-09-21T08:46:31.000Z", XSD.DATETIME)),
+        DataLocationPredicate -> Vector(HashOfTestEmailFile + "/"),
+        FileNamePredicate -> Vector(""),
+        FileFormatPredicate -> Vector(EmailContentType),
+        TextContentPredicate -> Vector(fileContentLikeFromTika(33, "Test body content", 7))), Some(emailPersonModel))
+  }
+
+  private def testMP3FileMetadata(hash: String, prefixedNewlines: Int, lastModified: String)(uri: URI) = {
+    val authorNodeSubject = bnode()
+    val authorNode = new ModelBuilder().subject(authorNodeSubject).
+      add(RDF.TYPE, asIRI(PersonObjectType)).
+      add(asIRI(NamePredicate), "tela").build()
+
+    createRDFModel(uri, MP3ObjectType, Map(
+      DataLocationPredicate -> hash,
+        FileNamePredicate -> TestMP3FileName.toString,
+        FileFormatPredicate -> MP3ContentType,
+        AuthorPredicate -> authorNodeSubject,
+        GenrePredicate -> "Rock",
+        NamePredicate -> "Short, Silent MP3",
+        LastModifiedPredicate -> literal(lastModified, XSD.DATETIME),
+        TextContentPredicate -> fileContentLikeFromTika(prefixedNewlines,
+          "Short, Silent MP3\n\nShort, Silent MP3\ntela\nRock\n0.15673469\nXXX - \nSmall MP3 for testing tela", 1)),
+        Some(authorNode))
+  }
+
+  private def testTextFileMetadata(hash: String, prefixedNewlines: Int, lastModified: String)(uri: URI) =
+    createRDFModel(uri, GenericMediaFileType, Map(
+      DataLocationPredicate -> hash,
+      FileNamePredicate -> TestTextFileName.toString,
+      TextContentPredicate -> fileContentLikeFromTika(prefixedNewlines, fileContent(TestTextFile), 1),
+      FileFormatPredicate -> s"$PlainTextContentType; charset=ISO-8859-1",
+      LastModifiedPredicate -> literal(lastModified, XSD.DATETIME),
+      NamePredicate -> TestTextFileName))
+
+  private def testZipFileMetadata(uri: URI) =
+    createRDFModel(uri, GenericMediaFileType, Map(
+      DataLocationPredicate -> HashOfTestZipFile,
+      FileNamePredicate -> TestZipFileName.toString,
+      FileFormatPredicate -> ZipFileContentType,
+      TextContentPredicate -> (fileContentLikeFromTika(12, s"music/$TestMP3FileName", 1) + fileContentLikeFromTika(2, "testTextFile.zip", 2))))
+
+  private def testInnerZipFileMetadata(uri: URI) =
+    createRDFModel(uri, GenericMediaFileType, Map(
+      DataLocationPredicate -> s"$HashOfTestZipFile/testTextFile.zip",
+      FileNamePredicate -> "testTextFile.zip",
+      FileFormatPredicate -> ZipFileContentType,
+      TextContentPredicate -> fileContentLikeFromTika(20, TestTextFileName.toString, 2),
+      LastModifiedPredicate -> literal("2022-07-22T12:57:01.000Z", XSD.DATETIME)))
+
+  private def testTgzFileMetadata(uri: URI) =
+    createRDFModel(uri, GenericMediaFileType, Map(
+      DataLocationPredicate -> HashOfTestTgzFile,
+      FileNamePredicate -> TestTgzFileName.toString,
+      FileFormatPredicate -> GzipFileContentType,
+      TextContentPredicate -> fileContentLikeFromTika(9, TestTarFileName, 2)))
+
+  private def testTarFileMetadata(uri: URI) =
+    createRDFModel(uri, GenericMediaFileType, Map(
+      DataLocationPredicate -> s"$HashOfTestTgzFile/$TestTarFileName",
+      FileNamePredicate -> TestTarFileName,
+      FileFormatPredicate -> TarFileContentType,
+      TextContentPredicate -> (fileContentLikeFromTika(14, s"mp3/music.tgz", 1) + fileContentLikeFromTika(2, TestTextFileName.toString, 2))))
+
+  private def testMusicTarFileMetadata(uri: URI) =
+    createRDFModel(uri, GenericMediaFileType, Map(
+      DataLocationPredicate -> s"$HashOfTestTgzFile/$TestTarFileName/mp3/music.tgz/music.tar",
+      FileNamePredicate -> "music.tar",
+      FileFormatPredicate -> TarFileContentType,
+      TextContentPredicate -> fileContentLikeFromTika(14, "music/testMP3.mp3", 2)))
+
+  private def testMusicTgzFileMetadata(uri: URI) =
+    createRDFModel(uri, GenericMediaFileType, Map(
+      DataLocationPredicate -> s"$HashOfTestTgzFile/$TestTarFileName/mp3/music.tgz",
+        FileNamePredicate -> "music.tgz",
+        FileFormatPredicate -> GzipFileContentType,
+        LastModifiedPredicate -> literal("2026-04-10T15:27:36.000Z", XSD.DATETIME),
+        TextContentPredicate -> fileContentLikeFromTika(17, "music.tar", 2)))
 
   private val TestProfileInfoAsXML = <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
     <rdf:Description rdf:about={TestDataObjectUri.toString}>
@@ -143,9 +238,12 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
 
     val xmppSession = mock[XMPPSession]
 
-    var uuids = Vector(TestUUID, AdditionalTestUUID1, AdditionalTestUUID2, AdditionalTestUUID3)
+    var uuids = Vector(TestUUID, AdditionalTestUUID1, AdditionalTestUUID2, AdditionalTestUUID3, AdditionalTestUUID4, AdditionalTestUUID5)
     val connection = Await.result(DataStoreConnectionImpl.getDataStore(BaseTestDir, TestUsername, GenericFileDataMap,
-      Map(MP3ContentType -> MP3FileDataMap, ICalContentType -> ICalDataMap, PlainTextContentType -> PlainTextDataMap),
+      Map(MP3ContentType -> MP3FileDataMap,
+        ICalContentType -> ICalDataMap,
+        PlainTextContentType -> PlainTextDataMap,
+        EmailContentType -> EmailDataMap),
       xmppSession, TestTikaConfigFile, () => {
         val result = uuids.head
         uuids = uuids.tail
@@ -178,8 +276,8 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   }
 
   it should "retrieve the same JSONLD graph that was inserted when the URI of that graph is requested" in testEnvironment { environment =>
-    insertJSON(TestProfileInfoAsJSON, environment)
-    environment.connection.retrieveJSON(TestDataObjectUri) should beFutureJSONLDEquivalentTo(TestProfileInfoAsJSON)
+    insertJSON(testProfileInfoAsJSON(TestDataObjectUri), environment)
+    assertURIStringContentsInDatastore(environment, TestDataObjectUri, testProfileInfoAsJSON)
     environment.connection.retrieveJSON(new URI("http://tela/nonExistant")) should beFutureJSONLDEquivalentTo("[]")
   }
 
@@ -191,9 +289,9 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
                          |    }
                          |]""".stripMargin
 
-    insertJSON(TestProfileInfoAsJSON, environment)
+    insertJSON(testProfileInfoAsJSON(TestDataObjectUri), environment)
     insertJSON(otherPerson, environment)
-    environment.connection.retrieveJSON(TestDataObjectUri) should beFutureJSONLDEquivalentTo(TestProfileInfoAsJSON)
+    assertURIStringContentsInDatastore(environment, TestDataObjectUri, testProfileInfoAsJSON)
   }
 
   "insertJson" should "overwrite old content when new content is inserted with a pre-existing URI" in testEnvironment { environment =>
@@ -215,12 +313,12 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
                            |]""".stripMargin
 
     insertJSON(alternateData, environment)
-    insertJSON(TestProfileInfoAsJSON, environment)
-    environment.connection.retrieveJSON(TestDataObjectUri) should beFutureJSONLDEquivalentTo(TestProfileInfoAsJSON)
+    insertJSON(testProfileInfoAsJSON(TestDataObjectUri), environment)
+    assertURIStringContentsInDatastore(environment, TestDataObjectUri, testProfileInfoAsJSON)
   }
 
   "publish" should "publish given URI in XML format via XMPP" in testEnvironment { environment =>
-    insertJSON(TestProfileInfoAsJSON, environment)
+    insertJSON(testProfileInfoAsJSON(TestDataObjectUri), environment)
     environment.connection.publish(TestDataObjectUri)
 
     verify(environment.xmppSession).publish(ArgumentMatchers.eq(TestDataObjectUri), argThat(new XMLMatcher(TestProfileInfoAsXML)))
@@ -233,7 +331,7 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   "getPublishedData" should "retrieve published data from XMPPSession and return response as JSON" in testEnvironment { environment =>
     when(environment.xmppSession.getPublishedData(TestUsername, TestDataObjectUri)).thenReturn(Future.successful(TestProfileInfoAsXML.toString))
 
-    environment.connection.retrievePublishedDataAsJSON(TestUsername, TestDataObjectUri) should beFutureJSONLDEquivalentTo(TestProfileInfoAsJSON)
+    environment.connection.retrievePublishedDataAsJSON(TestUsername, TestDataObjectUri) should beFutureJSONLDEquivalentTo(testProfileInfoAsJSON(TestDataObjectUri))
   }
 
   "storeMediaItem" should "place contents of temporary file in data store with correct hash and remove temporary file" in testEnvironment { environment =>
@@ -253,34 +351,49 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
 
   it should "store UUID, hash and file format of media items in RDF store" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestHtmlFile, TestHtmlFileName, None, environment.connection)
-    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beFutureJSONLDEquivalentTo(TestHTMLFileMetadata)
+    assertURIContentsInDatastore(environment, URNWithTestUUIDAsURI, testHTMLFileMetadata)
   }
 
   it should "store metadata from MP3 file in RDF store" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestMP3, TestMP3FileName, Some(TestDateAsLocalDateTime), environment.connection)
-    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beFutureJSONLDEquivalentTo(
-      testMP3FileMetadata(TestUUID, HashOfTestMP3, 22, TestDateWithIsoInstantFormat))
+    assertURIContentsInDatastore(environment, URNWithTestUUIDAsURI, testMP3FileMetadata(HashOfTestMP3, 22, TestDateWithIsoInstantFormat))
   }
 
   it should "extract appropriate metadata from ical content" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestIcalFileWithEvent, TestIcalWithEventFileName, None, environment.connection)
-    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beFutureJSONLDEquivalentTo(TestICalFileMetadata)
+    assertURIContentsInDatastore(environment, URNWithTestUUIDAsURI, testICalFileMetadata)
+  }
+
+  it should "extract appropriate metadata from email" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestEmailFile, TestEmailFileName, None, environment.connection)
+    assertURIContentsInDatastore(environment, Map(
+      URNWithTestUUIDAsURI -> testMbox,
+      AdditionalTestUUID1AsURN -> testEmailAttachment,
+      AdditionalTestUUID2AsURN -> testEmailFileMetadata))
   }
 
   it should "store filename and last modified date" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestTextFile, TestTextFileName, Some(TestDateAsLocalDateTime), environment.connection)
-    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beFutureJSONLDEquivalentTo(
-      testTextFileMetadata(TestUUID, HashOfTestTextFile, 11, TestDateWithIsoInstantFormat))
+    assertURIContentsInDatastore(environment, URNWithTestUUIDAsURI, testTextFileMetadata(HashOfTestTextFile, 13, TestDateWithIsoInstantFormat))
   }
 
   it should "extract metadata for all contents in a compound file format and index text" in testEnvironment { environment =>
     createTempFileAndStoreContent(TestZipFile, TestZipFileName, None, environment.connection)
-    environment.connection.retrieveJSON(URNWithTestUUIDAsURI) should beFutureJSONLDEquivalentTo(TestZipFileMetadata)
-    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID1)) should beFutureJSONLDEquivalentTo(
-      testMP3FileMetadata(AdditionalTestUUID1, s"$HashOfTestZipFile/music/$TestMP3FileName", 28, "2022-07-20T08:22:00.000Z"))
-    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID2)) should beFutureJSONLDEquivalentTo(
-      testTextFileMetadata(AdditionalTestUUID2, s"$HashOfTestZipFile/testTextFile.zip/$TestTextFileName", 17, "2022-07-20T08:22:00.000Z"))
-    environment.connection.retrieveJSON(urnFromUuid(AdditionalTestUUID3)) should beFutureJSONLDEquivalentTo(TestInnerZipFileMetadata)
+    assertURIContentsInDatastore(environment, Map(
+      URNWithTestUUIDAsURI -> testZipFileMetadata,
+      AdditionalTestUUID1AsURN -> testMP3FileMetadata(s"$HashOfTestZipFile/music/$TestMP3FileName", 29, TestFileLastModified),
+      AdditionalTestUUID2AsURN -> testTextFileMetadata(s"$HashOfTestZipFile/testTextFile.zip/$TestTextFileName", 20, TestFileLastModified),
+      AdditionalTestUUID3AsURN -> testInnerZipFileMetadata))
+  }
+
+  it should "store nested tgz" in testEnvironment { environment =>
+    createTempFileAndStoreContent(TestDataRoot.resolve(TestTgzFileName), TestTgzFileName, None, environment.connection)
+    assertURIContentsInDatastore(environment, Map(URNWithTestUUIDAsURI -> testTgzFileMetadata,
+      AdditionalTestUUID1AsURN -> testMP3FileMetadata(s"$HashOfTestTgzFile/$TestTarFileName/mp3/music.tgz/music.tar/music/$TestMP3FileName", 29, TestFileLastModified),
+      AdditionalTestUUID2AsURN -> testMusicTarFileMetadata,
+      AdditionalTestUUID3AsURN -> testMusicTgzFileMetadata,
+      AdditionalTestUUID4AsURN -> testTextFileMetadata(s"$HashOfTestTgzFile/$TestTarFileName/$TestTextFileName", 20, TestFileLastModified),
+      AdditionalTestUUID5AsURN -> testTarFileMetadata))
   }
 
   "retrieveMediaItem" should "return the absolute path of the requested file if it exists in the data store" in testEnvironment { environment =>
@@ -307,12 +420,12 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   }
 
   it should "handle full text search queries" in testEnvironment { environment =>
-    insertJSON(TestProfileInfoAsJSON, environment)
+    insertJSON(testProfileInfoAsJSON(TestDataObjectUri), environment)
 
     // We search for "walking" even though the name is "Walks" to verify that stemming works for both content and queries
     environment.connection.runSPARQLQuery("PREFIX search: <http://www.openrdf.org/contrib/lucenesail#>\n" +
       "PREFIX foaf: <http://xmlns.com/foaf/0.1/>\n" +
-      "CONSTRUCT { } WHERE { ?s foaf:familyName ?o . ?s search:matches [ search:query \"walking\" ] }") should beFutureJSONLDEquivalentTo(TestFamilyNameFromProfileInfo)
+      "CONSTRUCT { } WHERE { ?s foaf:familyName ?o . ?s search:matches [ search:query \"walking\" ] }") should beFutureJSONLDEquivalentTo(testFamilyNameFromProfileInfo(TestDataObjectUri))
   }
 
   it should "handle GeoSparql queries" in testEnvironment { environment =>
@@ -321,7 +434,7 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
     val valueFactory = SimpleValueFactory.getInstance()
 
     val graphWithRestaurant = new LinkedHashModel()
-    graphWithRestaurant.add(valueFactory.createIRI("http://leVinCoeur"), GEO.AS_WKT, valueFactory.createLiteral("POINT (2.29397 48.87510)", GEO.WKT_LITERAL))
+    graphWithRestaurant.add(valueFactory.createIRI("http://leVinCoeur"), GeoCoordinatesPredicateIri, valueFactory.createLiteral("POINT (2.29397 48.87510)", GeoCoordinatesLiteralType))
 
     val graphWithRestaurantAsJson: String = DataStoreConnectionImpl.convertRDFModelToJson(graphWithRestaurant)
     insertJSON(graphWithRestaurantAsJson, environment)
@@ -347,14 +460,22 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
     tempFile
   }
 
+  private def assertURIContentsInDatastore(environment: TestEnvironment, uri: URI, expectedContents: URI => Model): Unit = {
+    environment.connection.retrieveJSON(uri) should beFutureJSONLDEquivalentTo(expectedContents(uri))
+  }
+
+  private def assertURIContentsInDatastore(environment: TestEnvironment, expectations: Map[URI, URI => Model]): Unit = {
+    expectations.foreach((uri, expectedContents) => assertURIContentsInDatastore(environment, uri, expectedContents))
+  }
+
+  private def assertURIStringContentsInDatastore(environment: TestEnvironment, uri: URI, expectedContents: URI => String): Unit = {
+    environment.connection.retrieveJSON(uri) should beFutureJSONLDEquivalentTo(expectedContents(uri))
+  }
+
   private def beFutureJSONLDEquivalentTo(expectedValue: Model): Matcher[Future[String]] = {
     new Matcher[Future[String]]() {
       override def apply(left: Future[String]): MatchResult = {
-        val actualValueAsModel = getJSONAsRDFModel(Await.result(left, TestAwaitTimeout))
-        MatchResult(
-          Models.isomorphic(expectedValue, actualValueAsModel),
-          s"""Expected $expectedValue, but got $actualValueAsModel""",
-          s"""Got the expected value $expectedValue""")
+        compareModels(expectedValue, getJSONAsRDFModel(Await.result(left, TestAwaitTimeout)))
       }
     }
   }
@@ -376,8 +497,8 @@ class DataStoreConnectionImplSpec extends DataStoreBaseSpec {
   //TODO Sadly tika is a little funny putting these newlines all over the place
   //Probably the best thing to do going forward is to just strip out leading/trailing newlines
   //in the production code before indexing the text, but let's wait and see how tika evolves in future versions
-  private def fileContentLikeFromTika(prefixedNewlines: Int, content: String) =
-    "\n".repeat(prefixedNewlines) + content + "\n"
+  private def fileContentLikeFromTika(prefixedNewlines: Int, content: String, postfixedNewlines: Int) =
+    "\n".repeat(prefixedNewlines) + content + "\n".repeat(postfixedNewlines)
 
   private def fileContent(file: Path) = {
     new String(Files.readAllBytes(file))

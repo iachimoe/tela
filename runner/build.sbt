@@ -1,6 +1,14 @@
 name := "runner"
 
-libraryDependencies += "org.playframework" %% "play-guice" % "3.0.5"
+libraryDependencies += "org.playframework" %% "play-guice" % "3.0.11"
+
+// Sadly at the time of writing this FileSystemProvider doesn't get picked up in Play framework dev mode by default
+// The workaround I have found is to set the SBT_OPTS environment variable to something like:
+// "-Xbootclasspath/a:/PATH/TO/TARBALLFS.JAR:/PATH/TO/COMMONS-COMPRESS.JAR:/PATH/TO/COMMONS-IO.JAR:/PATH/TO/COMMONS-LANG.JAR"
+libraryDependencies += "io.github.iachimoe.tarballfs" % "tarballfs" % "1.0.0"
+
+// This is useful for testing downloads of files embedded within large archives that take a long time to decompress
+PlayKeys.devSettings += "play.server.http.idleTimeout" -> "300s"
 
 //TODO This is not nice right now. Have to explicitly run sbt compile before
 //running in dev environment to make sure deps are picked up
@@ -23,12 +31,5 @@ packageWebDeps := {
 enablePlugins(AshScriptPlugin)
 Docker / packageName := "tela"
 dockerBuildOptions += "--no-cache"
-dockerBaseImage := "eclipse-temurin:21-alpine"
-
-//dockerBuildxPlatforms := Seq("linux/arm64/v8", "linux/amd64") //WHYYYY DOESN'T THIS WORK????
-//From here https://github.com/sbt/sbt-native-packager/issues/1548 doesn't seem to work
-/*dockerBuildCommand := dockerExecCommand.value ++ (
-  if (dockerBuildxPlatforms.value.isEmpty) { Seq("build") }
-  else { Seq("buildx", "build",  s"--platform=${dockerBuildxPlatforms.value.mkString(",")}") }
-  ++ dockerBuildOptions.value ++ Seq(".")
-)*/
+dockerBaseImage := "eclipse-temurin:25-alpine"
+dockerBuildxPlatforms := Seq("linux/arm64/v8", "linux/amd64")

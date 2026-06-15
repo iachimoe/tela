@@ -11,15 +11,15 @@ import net.fortuna.ical4j.model.property.{DtStart, Geo}
 import net.fortuna.ical4j.model.{Component, Property}
 import org.apache.tika.metadata.{Metadata, TikaCoreProperties}
 import org.apache.tika.mime.MediaType
-import org.apache.tika.parser.{AbstractParser, ParseContext}
+import org.apache.tika.parser.{ParseContext, Parser}
 import org.xml.sax.ContentHandler
 
-import scala.jdk.OptionConverters._
+import scala.jdk.OptionConverters.*
 import scala.reflect.ClassTag
 
 //TODO This is a very rudimentary parser that is unlikely to stand up very well in the real world
 //Hopefully Tika includes an ical parser soon
-class ICalParser extends AbstractParser {
+class ICalParser extends Parser {
   private val dateFormatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
 
   override def getSupportedTypes(context: ParseContext): util.Set[MediaType] = Collections.singleton(MediaType.parse(ICalContentType))

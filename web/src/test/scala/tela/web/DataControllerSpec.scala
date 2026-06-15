@@ -137,16 +137,16 @@ class DataControllerSpec extends SessionManagerClientBaseSpec {
     testDownloadMediaItem(None, None, Status.NOT_FOUND, Array())(environment, materializer)
   }
 
-  it should "retrieve file from archive" in testEnvironment { (environment, materializer) =>
+  it should "retrieve file from archive (URL encoded)" in testEnvironment { (environment, materializer) =>
     testDownloadMediaItem(Some(Paths.get("web/src/test/data/nestedZip.zip")),
-      Some("outerFolder/innerZip.zip/innerFolder/testTextFile.txt"),
+      Some("outer%20folder/innerZip.zip/inner%20folder/testTextFile.txt"),
       Status.OK,
       Files.readAllBytes(Paths.get("web/src/test/data/testTextFileWithinZip.txt")))(environment, materializer)
   }
 
   it should "return 404 for invalid path within archive" in testEnvironment { (environment, materializer) =>
     testDownloadMediaItem(Some(Paths.get("web/src/test/data/nestedZip.zip")),
-      Some("outerFolder/innerZip.zip/nonExistent/testTextFile.txt"),
+      Some("outer%20folder/innerZip.zip/nonExistent/testTextFile.txt"),
       Status.NOT_FOUND,
       Array())(environment, materializer)
   }
@@ -160,14 +160,14 @@ class DataControllerSpec extends SessionManagerClientBaseSpec {
 
   it should "return 404 when parent file is not an archive" in testEnvironment { (environment, materializer) =>
     testDownloadMediaItem(Some(Paths.get("web/src/test/data/TestApp/index.html")),
-      Some("outerFolder/innerZip.zip/innerFolder/testTextFile.txt"),
+      Some("outer%20folder/innerZip.zip/inner%20folder/testTextFile.txt"),
       Status.NOT_FOUND,
       Array())(environment, materializer)
   }
 
   it should "return 404 when attempting to retrieve a child of a child that is not an archive" in testEnvironment { (environment, materializer) =>
     testDownloadMediaItem(Some(Paths.get("web/src/test/data/nestedZip.zip")),
-      Some("outerFolder/innerZip.zip/innerFolder/testTextFile.txt/something"),
+      Some("outer%20folder/innerZip.zip/inner%20folder/testTextFile.txt/something"),
       Status.NOT_FOUND,
       Array())(environment, materializer)
   }

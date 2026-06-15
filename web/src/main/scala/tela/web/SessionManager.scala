@@ -6,9 +6,10 @@ import java.util.UUID
 import org.apache.pekko.actor.{Actor, ActorLogging, ActorRef, PoisonPill}
 import org.apache.pekko.pattern.pipe
 import play.api.libs.json.{Json, Writes}
-import tela.baseinterfaces._
-import tela.web.JSONConversions._
-import tela.web.SessionManager._
+import tela.baseinterfaces.*
+import tela.baseinterfaces.LoginFailure.ConnectionFailure
+import tela.web.JSONConversions.*
+import tela.web.SessionManager.*
 
 import java.time.LocalDateTime
 import scala.concurrent.{ExecutionContext, Future}
@@ -115,8 +116,7 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
   private def publishData(sessionId: UUID, json: String, uri: URI): Unit = {
     log.debug("Publishing data for user with session {} with uri {}", sessionId, uri)
     val session = sessions(sessionId)
-    session.dataStoreConnection.insertJSON(json).flatMap(_ => session.dataStoreConnection.publish(uri))
-    ()
+    logOnFutureFailure(session.dataStoreConnection.insertJSON(json).flatMap(_ => session.dataStoreConnection.publish(uri)), "publish data")
   }
 
   private def retrieveData(sessionId: UUID, uri: URI): Unit = {
@@ -139,14 +139,12 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
 
   private def addContact(sessionId: UUID, contact: String): Unit = {
     log.debug("Adding contact {} for user with session {}", contact, sessionId)
-    sessions(sessionId).xmppSession.addContact(contact)
-    ()
+    logOnFutureFailure(sessions(sessionId).xmppSession.addContact(contact), "add contact")
   }
 
   private def getContactList(sessionId: UUID): Unit = {
     log.debug("Getting contact list for user with session {}", sessionId)
-    sessions(sessionId).xmppSession.getContactList()
-    ()
+    logOnFutureFailure(sessions(sessionId).xmppSession.getContactList(), "get contact list")
   }
 
   private def setLanguage(sessionId: UUID, language: String): Unit = {
@@ -162,8 +160,7 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
 
   private def storeMediaItem(sessionId: UUID, fileLocation: Path, originalFileName: Path, lastModified: Option[LocalDateTime]): Unit = {
     log.debug("Storing media item for user with session {}", sessionId)
-    sessions(sessionId).dataStoreConnection.storeMediaItem(fileLocation, originalFileName, lastModified)
-    ()
+    logOnFutureFailure(sessions(sessionId).dataStoreConnection.storeMediaItem(fileLocation, originalFileName, lastModified), "store media item")
   }
 
   private def retrieveMediaItem(sessionId: UUID, hash: String): Unit = {
@@ -193,27 +190,28 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
 
     sessionInfo.webSockets.foreach(_ ! PoisonPill)
     sessions -= sessionId
-    sessionInfo.xmppSession.disconnect()
-    sessionInfo.dataStoreConnection.closeConnection()
+    logOnFutureFailure(sessionInfo.xmppSession.disconnect(), "disconnect XMPP session")
+    logOnFutureFailure(sessionInfo.dataStoreConnection.closeConnection(), "close data store connection")
     ()
   }
 
   private def setPresence(sessionId: UUID, presence: Presence): Unit = {
     log.debug("Session {} changing presence to {}", sessionId, presence)
-    sessions(sessionId).xmppSession.setPresence(presence)
-    ()
+    logOnFutureFailure(sessions(sessionId).xmppSession.setPresence(presence), "set presence")
   }
 
   private def sendCallSignal(sessionId: UUID, user: String, data: String): Unit = {
     log.debug("Session {} sending call signal {} to {}", sessionId, data, user)
-    sessions(sessionId).xmppSession.sendCallSignal(user, data)
-    ()
+    logOnFutureFailure(sessions(sessionId).xmppSession.sendCallSignal(user, data), "send call signal")
   }
 
   private def sendChatMessage(sessionId: UUID, user: String, message: String): Unit = {
     log.debug("Session {} sending chat message {} to {}", sessionId, message, user)
-    sessions(sessionId).xmppSession.sendChatMessage(user, message)
-    ()
+    logOnFutureFailure(sessions(sessionId).xmppSession.sendChatMessage(user, message), "send chat message")
+  }
+
+  private def logOnFutureFailure(future: Future[Unit], description: String): Unit = {
+    future.failed.foreach(e => log.error(e, s"Failed operation: $description"))
   }
 
   private def retrieveSessionIfItExists(sessionId: UUID): Unit = {
@@ -242,6 +240,10 @@ class SessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSe
       case Right(xmppSession) =>
         createDataStoreConnection(username, xmppSession, blockingExecutionContext).map((dataStoreConnection: DataStoreConnection) =>
           Right(sessionId -> new SessionInfo(xmppSession, dataStoreConnection, UserData(username, preferredLanguage))))
+    } recover {
+      case e =>
+        log.error(e, "Received an unexpected exception while attempting login")
+        Left(ConnectionFailure)
     } map { result => HandleLoginResult(result, respondTo) } pipeTo self
     ()
   }

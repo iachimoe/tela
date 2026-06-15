@@ -34,7 +34,7 @@ import tela.baseinterfaces.*
 import tela.xmpp.SmackXMPPSession.{CallSignal, CallSignalElementName, DefaultPriority, DefaultStatusText, TelaURN}
 
 import scala.concurrent.Await
-import scala.jdk.CollectionConverters.*
+import scala.jdk.CollectionConverters._
 import scala.xml.{Elem, NodeSeq, XML}
 import scala.concurrent.ExecutionContext.global
 

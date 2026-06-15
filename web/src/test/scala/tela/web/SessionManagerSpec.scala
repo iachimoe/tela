@@ -1,5 +1,7 @@
 package tela.web
 
+import ch.qos.logback.classic.{Level, Logger}
+
 import java.nio.file.{Path, Paths}
 import java.util.UUID
 import org.apache.pekko.actor.SupervisorStrategy.Resume
@@ -7,14 +9,15 @@ import org.apache.pekko.actor.{Actor, ActorRef, ActorSystem, OneForOneStrategy, 
 import org.apache.pekko.pattern.ask
 import org.apache.pekko.testkit.{TestActorRef, TestProbe}
 import com.typesafe.config.ConfigFactory
-import org.mockito.Mockito._
+import org.mockito.Mockito.*
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
-import org.scalatest.matchers.should.Matchers._
+import org.scalatest.matchers.should.Matchers.*
+import org.slf4j.LoggerFactory
 import play.api.libs.json.{JsValue, Json}
-import tela.baseinterfaces._
-import tela.web.JSONConversions._
-import tela.web.SessionManager._
+import tela.baseinterfaces.*
+import tela.web.JSONConversions.*
+import tela.web.SessionManager.*
 
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.language.postfixOps
@@ -67,6 +70,21 @@ class SessionManagerSpec extends WebBaseSpec {
     result should === (Left(LoginFailure.ConnectionFailure))
   }
 
+  it should "return ConnectionFailure on unexpected exception" in testEnvironment { environment =>
+    val sessionManager = createSessionManagerToFailOnLogin(environment)
+
+    // Jumping through some hoops to prevent exception noise in the test run
+    val logger = LoggerFactory.getLogger(sessionManager.underlyingActor.getClass.getName).asInstanceOf[Logger]
+    val existingLevel = logger.getLevel
+    try {
+      logger.setLevel(Level.OFF)
+      val result = sendMessageAndGetResponse[Either[LoginFailure, String]](sessionManager, Login(TestUsername, TestPassword, DefaultLanguage))
+      result should === (Left(LoginFailure.ConnectionFailure))
+    } finally {
+      logger.setLevel(existingLevel)
+    }
+  }
+
   it should "create session with connections to xmpp server and data store on successful login" in testEnvironment { environment =>
     val sessionManager = createSessionManager(Right(environment.xmppSession), environment)
 
@@ -89,6 +107,8 @@ class SessionManagerSpec extends WebBaseSpec {
   }
 
   "Logout" should "disconnect from xmpp server and datastore, and kill websockets associated with connection" in testEnvironment { environment =>
+    when(environment.xmppSession.disconnect()).thenReturn(Future.successful(()))
+    when(environment.dataStoreConnection.closeConnection()).thenReturn(Future.successful(()))
     val sessionManager = createSessionManager(Right(environment.xmppSession), environment)
 
     implicit val actorSystem = environment.actorSystem
@@ -111,6 +131,7 @@ class SessionManagerSpec extends WebBaseSpec {
   }
 
   "SetPresence" should "set the given presence state on the XMPP connection" in testEnvironment { environment =>
+    when(environment.xmppSession.setPresence(Presence.Available)).thenReturn(Future.successful(()))
     loginAndSendMessage(environment, SetPresence(TestSessionId, Presence.Available))
     verify(environment.xmppSession).setPresence(Presence.Available)
   }
@@ -195,9 +216,10 @@ class SessionManagerSpec extends WebBaseSpec {
     val webSockets = Vector(TestProbe(), TestProbe(), TestProbe())
     webSockets.foreach(webSocket => sessionManager ! RegisterWebSocket(TestSessionId, webSocket.ref))
 
-    when(environment.xmppSession.getContactList()).thenAnswer(new Answer[Unit] {
-      override def answer(invocation: InvocationOnMock): Unit = {
+    when(environment.xmppSession.getContactList()).thenAnswer(new Answer[Future[Unit]] {
+      override def answer(invocation: InvocationOnMock): Future[Unit] = {
         environment.sessionListener.foreach(_.contactsAdded(Vector(ContactInfo(TestContact1, Presence.Available), ContactInfo(TestContact2, Presence.Away))))
+        Future.successful(())
       }
     })
 
@@ -221,6 +243,7 @@ class SessionManagerSpec extends WebBaseSpec {
   }
 
   "AddContact" should "add the specified contact in the underlying xmpp session" in testEnvironment { environment =>
+    when(environment.xmppSession.addContact(TestContact1)).thenReturn(Future.successful(()))
     loginAndSendMessage(environment, AddContact(TestSessionId, TestContact1))
     verify(environment.xmppSession).addContact(TestContact1)
   }
@@ -244,6 +267,7 @@ class SessionManagerSpec extends WebBaseSpec {
   }
 
   "SendCallSignal" should "send the given call signal via the xmpp connection" in testEnvironment { environment =>
+    when(environment.xmppSession.sendCallSignal(TestContact1, TestCallSignalData)).thenReturn(Future.successful(()))
     loginAndSendMessage(environment, SendCallSignal(TestSessionId, TestContact1, TestCallSignalData))
     verify(environment.xmppSession).sendCallSignal(TestContact1, TestCallSignalData)
   }
@@ -255,6 +279,7 @@ class SessionManagerSpec extends WebBaseSpec {
   }
 
   "SendChatMessage" should "send the given chat message via the xmpp connection" in testEnvironment { environment =>
+    when(environment.xmppSession.sendChatMessage(TestContact1, TestChatMessage)).thenReturn(Future.successful(()))
     loginAndSendMessage(environment, SendChatMessage(TestSessionId, TestContact1, TestChatMessage))
     verify(environment.xmppSession).sendChatMessage(TestContact1, TestChatMessage)
   }
@@ -268,6 +293,7 @@ class SessionManagerSpec extends WebBaseSpec {
   "StoreMediaItem" should "instruct the data store to store the file at the specified location" in testEnvironment { environment =>
     val tempFile = Paths.get("tempFile")
     val originalFileName = Paths.get("myFile.txt")
+    when(environment.dataStoreConnection.storeMediaItem(tempFile, originalFileName, Some(TestDateAsLocalDateTime))).thenReturn(Future.successful(()))
     loginAndSendMessage(environment, StoreMediaItem(TestSessionId, tempFile, originalFileName, Some(TestDateAsLocalDateTime)))
     verify(environment.dataStoreConnection).storeMediaItem(tempFile, originalFileName, Some(TestDateAsLocalDateTime))
   }
@@ -284,6 +310,8 @@ class SessionManagerSpec extends WebBaseSpec {
   }
 
   "events on non-existent session" should "not cause exceptions" in testEnvironment { environment =>
+    when(environment.xmppSession.disconnect()).thenReturn(Future.successful(()))
+    when(environment.dataStoreConnection.closeConnection()).thenReturn(Future.successful(()))
     loginAndSendMessage(environment, Logout(TestSessionId))
     environment.sessionListener.foreach(_.contactsAdded(Vector.empty))
     environment.sessionListener.foreach(_.presenceChanged(ContactInfo(TestContact1, Presence.DoNotDisturb)))
@@ -327,29 +355,48 @@ class SessionManagerSpec extends WebBaseSpec {
   }
 
   private def createSessionManager(result: Either[LoginFailure, XMPPSession], environment: TestEnvironment): TestActorRef[SessionManager] = {
-    def createXMPPConnection(user: String, pass: String, settings: XMPPSettings, sessionListener: XMPPSessionListener, executionContext: ExecutionContext): Future[Either[LoginFailure, XMPPSession]] = {
-      user should === (TestUsername)
-      pass should === (TestPassword)
-      settings should === (TestXMPPSettings)
-      environment.sessionListener = Some(sessionListener)
-      Future.successful(result)
-    }
+    def createXMPPConnection(user: String, pass: String, settings: XMPPSettings, sessionListener: XMPPSessionListener, executionContext: ExecutionContext): Future[Either[LoginFailure, XMPPSession]] = Future {
+        user should ===(TestUsername)
+        pass should ===(TestPassword)
+        settings should ===(TestXMPPSettings)
+        environment.sessionListener = Some(sessionListener)
+        result
+      }(executionContext)
 
-    def createDataStoreConnection(user: String, xmppSession: XMPPSession, executionContext: ExecutionContext): Future[DataStoreConnection] = {
+    def createDataStoreConnection(user: String, xmppSession: XMPPSession, executionContext: ExecutionContext): Future[DataStoreConnection] = Future {
       user should === (TestUsername)
       (xmppSession eq environment.xmppSession) should === (true)
-      Future.successful(environment.dataStoreConnection)
+      environment.dataStoreConnection
+    }(executionContext)
+
+    createSessionManager(createXMPPConnection, createDataStoreConnection, environment)
+  }
+
+  private def createSessionManagerToFailOnLogin(environment: TestEnvironment): TestActorRef[SessionManager] = {
+    def createXMPPConnection(user: String, pass: String, settings: XMPPSettings, sessionListener: XMPPSessionListener, executionContext: ExecutionContext): Future[Either[LoginFailure, XMPPSession]] = Future {
+      environment.sessionListener = Some(sessionListener)
+      throw new Exception("This will fail")
+    }(executionContext)
+
+    def createDataStoreConnection(user: String, xmppSession: XMPPSession, executionContext: ExecutionContext): Future[DataStoreConnection] = {
+      Future.failed(new Exception("This will fail"))
     }
 
+    createSessionManager(createXMPPConnection, createDataStoreConnection, environment)
+  }
+
+  private def createSessionManager(createXMPPConnection: (String, String, XMPPSettings, XMPPSessionListener, ExecutionContext) => Future[Either[LoginFailure, XMPPSession]],
+                                   createDataStoreConnection: (String, XMPPSession, ExecutionContext) => Future[DataStoreConnection],
+                                   environment: TestEnvironment): TestActorRef[SessionManager] = {
     //Send a message to the supervisor, and when we get a response, we know that it has come up
     //Otherwise it's possible that tests might fail intermittently because the supervisor hasn't started when we create the TestActorRef
     //For reasons unknown, when running this on a Debian instance on VirtualBox, we need to send (and await the result of)
     //2 messages rather than 1. Perhaps on other platforms 3 are needed :-)
-    Await.result(environment.supervisor ? "testMessage1", GeneralTimeoutAsDuration) should === ("testMessage1")
-    Await.result(environment.supervisor ? "testMessage2", GeneralTimeoutAsDuration) should === ("testMessage2")
+    Await.result(environment.supervisor ? "testMessage1", GeneralTimeoutAsDuration) should ===("testMessage1")
+    Await.result(environment.supervisor ? "testMessage2", GeneralTimeoutAsDuration) should ===("testMessage2")
 
-    implicit val actorSystem = environment.actorSystem
+    implicit val actorSystem: ActorSystem = environment.actorSystem
     //TODO Would everything work pretty much the same if we created a regular actor rather than using TestActorRef?
-    TestActorRef(Props(classOf[SessionManager], createXMPPConnection _, createDataStoreConnection _, TestLanguageInfo.languages, TestXMPPSettings, () => TestSessionId), environment.supervisor)
+    TestActorRef(Props(classOf[SessionManager], createXMPPConnection, createDataStoreConnection, TestLanguageInfo.languages, TestXMPPSettings, () => TestSessionId), environment.supervisor)
   }
 }

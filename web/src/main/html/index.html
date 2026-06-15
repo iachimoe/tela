@@ -8,11 +8,11 @@
 
     <script>
         //BEGIN JSON-LD FUNCTIONS
+        const JSON_LD_ID = "@id";
+        const JSON_LD_TYPE = "@type";
+        const JSON_LD_VALUE = "@value";
 
         function createJsonLdObjectAsString(id, type, data) {
-            const JSON_LD_ID = "@id";
-            const JSON_LD_TYPE = "@type";
-
             const jsonLdObject = {};
             jsonLdObject[JSON_LD_ID] = id;
             jsonLdObject[JSON_LD_TYPE] = [type];
@@ -25,19 +25,28 @@
         }
 
         function getValueOfJsonLdField(data, field) {
-            const JSON_LD_VALUE = "@value";
             const dataContainer = data[field];
             if (dataContainer == null) return null;
             else return dataContainer[0][JSON_LD_VALUE];
         }
 
+        function getIdsFromJsonLdField(data, field) {
+          const dataContainer = data[field];
+          if (dataContainer == null) return null;
+          else return dataContainer.map(item => item[JSON_LD_ID]);
+        }
+
         function createJsonLdValue(value) {
-            const JSON_LD_VALUE = "@value";
             const result = {};
             result[JSON_LD_VALUE] = value;
             return [result];
         }
 
+        function jsonLdListToMap(list) {
+          return Object.fromEntries(
+            list.map(obj => [obj[JSON_LD_ID], obj])
+          )
+        }
         // BEGIN WEBSOCKET FUNCTIONS
 
         function createEventsWebSocket(saveConnectionReference, onmessage, tryNumber = 0) {

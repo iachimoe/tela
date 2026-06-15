@@ -92,7 +92,7 @@ object SmackXMPPSession {
 
       val roster = Roster.getInstanceFor(connection)
       roster.addRosterListener(new ContactListChangeListener(session))
-      roster.addSubscribeListener(new PresenceSubscriptionHandler(session))
+      roster.addSubscribeListener(new PresenceSubscriptionHandler())
       ChatManager.getInstanceFor(connection).addIncomingListener(new TelaChatManagerListener(session))
       connection.registerIQRequestHandler(new CallSignalRequestHandler(session))
       Right(session)
@@ -119,7 +119,7 @@ object SmackXMPPSession {
     new XMPPTCPConnection(config)
   }
 
-  private class PresenceSubscriptionHandler(private val xmppSession: SmackXMPPSession) extends SubscribeListener {
+  private class PresenceSubscriptionHandler() extends SubscribeListener {
     override def processSubscribe(from: Jid, subscribeRequest: packet.Presence): SubscribeAnswer =
       SubscribeAnswer.ApproveAndAlsoRequestIfRequired
   }

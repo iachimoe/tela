@@ -1,10 +1,10 @@
 {
   "generic": {
-    "mediaItemType": "http://schema.org/MediaObject",
+    "objectType": "http://schema.org/MediaObject",
     "children": {
       "http://schema.org/alternateName": {
         "properties": [
-          "hashPredicate"
+          "dataLocationPredicate"
         ],
         "dataType": "Text"
       }
@@ -16,7 +16,7 @@
         "text/plain"
       ],
       "conf": {
-        "mediaItemType": "http://schema.org/MediaObject",
+        "objectType": "http://schema.org/MediaObject",
         "children": {
           "http://schema.org/name": {
             "properties": [
@@ -32,7 +32,7 @@
         "audio/mpeg"
       ],
       "conf": {
-        "mediaItemType": "http://schema.org/AudioObject",
+        "objectType": "http://schema.org/AudioObject",
         "children": {
           "http://schema.org/name": {
             "properties": [

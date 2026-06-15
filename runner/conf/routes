@@ -10,7 +10,7 @@ GET        /settings/languages  @tela.web.SettingsController.listAvailableLangua
 
 #The defeault routing DSL doesn't seem to enable routing requests to different endpoints based solely on differences in query string parameters
 #Therefore we are using a custom router for the /data endpoint
-->         /data                misc.DataRouter
+->         /data                tela.runner.DataRouter
 
 GET        /events              @tela.web.EventsController.webSocket
 

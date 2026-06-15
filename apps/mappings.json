@@ -1,10 +1,10 @@
 {
   "generic": {
-    "mediaItemType": "http://schema.org/MediaObject",
+    "objectType": "http://schema.org/MediaObject",
     "children": {
       "http://schema.org/identifier": {
         "properties": [
-          "hashPredicate"
+          "dataLocationPredicate"
         ],
         "dataType": "Text"
       },
@@ -20,7 +20,7 @@
         ],
         "dataType": "Text"
       },
-      "http://schema.org/description": {
+      "http://schema.org/text": {
         "properties": [
           "textContentPredicate"
         ],
@@ -43,7 +43,7 @@
         "application/pdf"
       ],
       "conf": {
-        "mediaItemType": "http://schema.org/MediaObject",
+        "objectType": "http://schema.org/MediaObject",
         "children": {
           "http://schema.org/name": {
             "properties": [
@@ -60,7 +60,7 @@
         "application/xhtml+xml"
       ],
       "conf": {
-        "mediaItemType": "http://schema.org/MediaObject",
+        "objectType": "http://schema.org/MediaObject",
         "children": {
           "http://schema.org/name": {
             "properties": [
@@ -78,7 +78,7 @@
         "video/mp4"
       ],
       "conf": {
-        "mediaItemType": "http://schema.org/VideoObject",
+        "objectType": "http://schema.org/VideoObject",
         "children": {
           "http://schema.org/dateCreated": {
             "properties": [
@@ -93,11 +93,22 @@
             "dataType": "Text"
           },
           "http://schema.org/author": {
-            "mediaItemType": "http://schema.org/Person",
+            "objectType": "http://schema.org/Person",
             "children": {
               "http://schema.org/name": {
                 "properties": [
                   "xmpDM:artist"
+                ],
+                "dataType": "Text"
+              }
+            }
+          },
+          "http://schema.org/isPartOf": {
+            "objectType": "http://schema.org/MusicAlbum",
+            "children": {
+              "http://schema.org/name": {
+                "properties": [
+                  "xmpDM:album"
                 ],
                 "dataType": "Text"
               }
@@ -112,7 +123,7 @@
         "audio/mp4"
       ],
       "conf": {
-        "mediaItemType": "http://schema.org/AudioObject",
+        "objectType": "http://schema.org/AudioObject",
         "children": {
           "http://schema.org/genre": {
             "properties": [
@@ -127,11 +138,22 @@
             "dataType": "Text"
           },
           "http://schema.org/author": {
-            "mediaItemType": "http://schema.org/Person",
+            "objectType": "http://schema.org/Person",
             "children": {
               "http://schema.org/name": {
                 "properties": [
                   "xmpDM:artist"
+                ],
+                "dataType": "Text"
+              }
+            }
+          },
+          "http://schema.org/isPartOf": {
+            "objectType": "http://schema.org/MusicAlbum",
+            "children": {
+              "http://schema.org/name": {
+                "properties": [
+                  "xmpDM:album"
                 ],
                 "dataType": "Text"
               }
@@ -143,7 +165,7 @@
     {
       "types": ["image/jpeg"],
       "conf": {
-        "mediaItemType": "http://schema.org/ImageObject",
+        "objectType": "http://schema.org/ImageObject",
         "children": {
           "http://schema.org/dateCreated": {
             "properties": [
@@ -152,10 +174,10 @@
             "dataType": "DateTime"
           },
           "http://schema.org/contentLocation": {
-            "mediaItemType": "http://schema.org/Place",
+            "objectType": "http://schema.org/Place",
             "children": {
               "http://schema.org/geo": {
-                "mediaItemType": "http://schema.org/GeoCoordinates",
+                "objectType": "http://schema.org/GeoCoordinates",
                 "children": {
                   "http://www.opengis.net/ont/geosparql#asWKT": {
                     "properties": [
@@ -173,7 +195,7 @@
     {
       "types": ["text/calendar"],
       "conf": {
-        "mediaItemType": "http://schema.org/Event",
+        "objectType": "http://schema.org/Event",
         "children": {
           "http://schema.org/name": {
             "properties": [
@@ -194,10 +216,10 @@
             "dataType": "DateTime"
           },
           "http://schema.org/location": {
-            "mediaItemType": "http://schema.org/Place",
+            "objectType": "http://schema.org/Place",
             "children": {
               "http://schema.org/geo": {
-                "mediaItemType": "http://schema.org/GeoCoordinates",
+                "objectType": "http://schema.org/GeoCoordinates",
                 "children": {
                   "http://www.opengis.net/ont/geosparql#asWKT": {
                     "properties": [
@@ -206,6 +228,67 @@
                     "dataType": "Geo"
                   }
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "types": [
+        "message/rfc822"
+      ],
+      "conf": {
+        "objectType": "http://schema.org/EmailMessage",
+        "children": {
+          "http://schema.org/name": {
+            "properties": [
+              "dc:title"
+            ],
+            "dataType": "Text"
+          },
+          "http://schema.org/dateSent": {
+            "properties": [
+              "dcterms:created"
+            ],
+            "dataType": "DateTime"
+          },
+          "http://schema.org/toRecipient": {
+            "objectType": "http://schema.org/ContactPoint",
+            "children": {
+              "http://schema.org/email": {
+                "properties": [
+                  "Message-To"
+                ],
+                "dataType": "Text"
+              }
+            }
+          },
+          "http://schema.org/ccRecipient": {
+            "objectType": "http://schema.org/ContactPoint",
+            "children": {
+              "http://schema.org/email": {
+                "properties": [
+                  "Message-Cc"
+                ],
+                "dataType": "Text"
+              }
+            }
+          },
+          "http://schema.org/sender": {
+            "objectType": "http://schema.org/Person",
+            "children": {
+              "http://schema.org/email": {
+                "properties": [
+                  "Message:From-Email"
+                ],
+                "dataType": "Text"
+              },
+              "http://schema.org/name": {
+                "properties": [
+                  "Message:From-Name"
+                ],
+                "dataType": "Text"
               }
             }
           }

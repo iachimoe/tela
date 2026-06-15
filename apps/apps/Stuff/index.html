@@ -5,6 +5,21 @@
 <link href="{{fontAwesomeCss}}" rel="stylesheet">
 
 <script>
+  function twoDimensionalArrayToHtmlTable(array) {
+      const output = [];
+      let i, j;
+
+      for (i = 0; i < array.length; i++) {
+        output.push("<tr>");
+        for (j = 0; j < array[i].length; j++) {
+          output.push("<td>" + array[i][j] + "</td>");
+        }
+        output.push("</tr>");
+      }
+      return output.join("");
+    }
+
+    const SCHEMA_ROOT = "http://schema.org/";
     // BEGIN CONTENT DATA TYPES
 
     class Content {
@@ -17,11 +32,13 @@
         }
 
         icon() {
-            return "far fa-file"
+            return "fa-regular fa-file"
         }
 
         displayName() {
-            return this.name || this.alternateName || this.encodingFormat
+          const span = document.createElement("span");
+          span.innerText = this.name || this.alternateName || this.encodingFormat;
+          return span;
         }
 
         viewObject() {
@@ -69,14 +86,27 @@
             super(name, alternateName, fileLocation, encodingFormat, false);
         }
 
-        icon() { return "far fa-file-audio" };
+        icon() { return "fa-regular fa-file-audio" };
 
         viewObject() {
+          const iconContainer = document.createElement('i');
+          iconContainer.className = "fa-solid fa-play";
+          const link = document.createElement('a');
+          link.style.color = "inherit";
+          link.href = "#";
+          link.appendChild(iconContainer);
+          const span = document.createElement('span');
+          span.appendChild(link);
+
+          link.addEventListener('click', () => {
             const audioPlayer = document.createElement("audio");
             audioPlayer.controls = true;
             audioPlayer.src = this.fileHref();
             audioPlayer.style.zIndex = "-1";
-            return audioPlayer;
+            span.removeChild(link);
+            span.appendChild(audioPlayer);
+          });
+          return span;
         };
 
         lightboxContent() { return null };
@@ -87,7 +117,7 @@
             super(name, alternateName, fileLocation, encodingFormat, false);
         }
 
-        icon() { return "far fa-file-image" };
+        icon() { return "fa-regular fa-file-image" };
 
         lightboxContent() {
             const image = document.createElement('img');
@@ -101,7 +131,7 @@
             super(name, alternateName, fileLocation, encodingFormat, false);
         }
 
-        icon() { return "far fa-file-video" };
+        icon() { return "fa-regular fa-file-video" };
 
         lightboxContent() {
             const video = document.createElement('video');
@@ -123,7 +153,8 @@
             super(name, alternateName, fileLocation, encodingFormat, true);
         }
 
-        icon() { return "fas fa-table" };
+        // Wanted to use regular rather than solid, but perplexingly this doesn't appear in regular
+        icon() { return "fa-solid fa-table" };
 
         lightboxContent () {
             //Have to create a div-within-a-div in order to set style because the outer div's style will get clobbered by the calling function
@@ -152,19 +183,7 @@
         };
 
         createTableRowsForCSVContent(csvContent) {
-            const output = [];
-            let i, j;
-
-            const csvAsTwoDimensionalArray = this.csvToArray(csvContent);
-
-            for (i = 0; i < csvAsTwoDimensionalArray.length; i++) {
-                output.push("<tr>");
-                for (j = 0; j < csvAsTwoDimensionalArray[i].length; j++) {
-                    output.push("<td>" + csvAsTwoDimensionalArray[i][j] + "</td>");
-                }
-                output.push("</tr>");
-            }
-            return output.join("");
+            return twoDimensionalArrayToHtmlTable(this.csvToArray(csvContent));
         };
 
         csvToArray(csvContent) {
@@ -201,7 +220,98 @@
             super(name, alternateName, fileLocation, encodingFormat, true);
         }
 
-        icon() { return "far fa-file-pdf" };
+        icon() { return "fa-regular fa-file-pdf" };
+    }
+
+    class EmailContent extends Content {
+      constructor(name, alternateName, fileLocation, encodingFormat, emailAsJsonLd, allJsonLdItemsAsMap) {
+        super(name, alternateName, fileLocation, encodingFormat, true);
+        this.emailAsJsonLd = emailAsJsonLd;
+        this.allJsonLdItemsAsMap = allJsonLdItemsAsMap;
+      }
+
+      getEmailAddresses(fieldName) {
+        const correspondents = parent.getIdsFromJsonLdField(this.emailAsJsonLd, SCHEMA_ROOT + fieldName);
+        return correspondents?.flatMap(correspondentId => parent.getValueOfJsonLdField(
+          this.allJsonLdItemsAsMap[correspondentId], SCHEMA_ROOT + "email")).filter(x => x != null);
+      }
+
+      formatDate(date) {
+        return new Date(date).toISOString().slice(0, 19).replace("T", " ");
+      }
+
+      displayName() {
+        const span = document.createElement('span');
+        const dateSent = this.formatDate(parent.getValueOfJsonLdField(this.emailAsJsonLd, SCHEMA_ROOT + "dateSent"));
+        const subject = this.name || this.alternateName;
+        const senders = this.getEmailAddresses("sender");
+        let correspondent = "";
+        if (senders) {
+          correspondent = "{{from}}: " + senders[0];
+        } else {
+          const toRecipients = this.getEmailAddresses("toRecipient");
+          if (toRecipients) {
+            correspondent = "{{to}}: " + toRecipients[0];
+          } else {
+            const ccRecipients = this.getEmailAddresses("ccRecipient");
+            if (ccRecipients) {
+              correspondent = "{{cc}}: " + ccRecipients[0];
+            }
+          }
+        }
+
+        span.innerText = `${dateSent} ${correspondent} ${subject}`;
+
+        return span;
+      };
+
+      icon() { return "fa-regular fa-envelope" };
+
+      lightboxContent () {
+        //Have to create a div-within-a-div in order to set style because the outer div's style will get clobbered by the calling function
+        const outerContainerDiv = document.createElement('div');
+        const innerContainerDiv = document.createElement('div');
+        innerContainerDiv.style = 'max-width: 100%; max-height: 100%; overflow: auto';
+
+        outerContainerDiv.appendChild(innerContainerDiv);
+
+        const client = new XMLHttpRequest();
+
+        const emailId = this.emailAsJsonLd["@id"];
+        client.open('GET', "/data?uri=" + emailId);
+
+        client.onload = () => {
+          const dateSent = this.formatDate(parent.getValueOfJsonLdField(this.emailAsJsonLd, SCHEMA_ROOT + "dateSent"));
+          const subject = this.name || this.alternateName;
+          const senders = this.getEmailAddresses("sender");
+          const toRecipients = this.getEmailAddresses("toRecipient");
+          const ccRecipients = this.getEmailAddresses("ccRecipient");
+
+          const tableContents = [];
+          if (dateSent) tableContents.push(["{{date}}", dateSent]);
+          if (subject) tableContents.push(["{{subject}}", subject]);
+          if (senders) tableContents.push(["{{from}}", senders]);
+          if (toRecipients) tableContents.push(["{{to}}", toRecipients]);
+          if (ccRecipients) tableContents.push(["{{cc}}", ccRecipients]);
+
+          const table = document.createElement("table");
+          table.innerHTML = twoDimensionalArrayToHtmlTable(tableContents);
+
+          const emailContent = parent.jsonLdListToMap(JSON.parse(client.response))[emailId];
+          const bodyText = parent.getValueOfJsonLdField(emailContent, SCHEMA_ROOT + "text")?.trim();
+
+          const content = document.createElement('pre');
+          content.style = 'white-space: pre-wrap';
+          content.innerText = bodyText;
+
+          innerContainerDiv.appendChild(table);
+          innerContainerDiv.appendChild(content);
+        };
+
+        client.send();
+
+        return outerContainerDiv;
+      };
     }
     // END CONTENT DATA TYPES
 
@@ -211,12 +321,12 @@
         const sparqlQuery = searchText === "" ?
             "PREFIX schema: <http://schema.org/>\n" +
                 "CONSTRUCT { ?s ?p ?o . ?o ?p2 ?o2 }\n" +
-                "WHERE { ?s ?p ?o . OPTIONAL { ?o ?p2 ?o2 } . MINUS { ?s schema:description ?o } }" :
+                "WHERE { ?s ?p ?o . OPTIONAL { ?o ?p2 ?o2 } . MINUS { ?s schema:text ?o } }" :
             "PREFIX search: <http://www.openrdf.org/contrib/lucenesail#>\n" +
                 "PREFIX schema: <http://schema.org/>\n" +
                 "CONSTRUCT { ?s ?p ?o . ?o ?p2 ?o2 }\n" +
                 "WHERE { ?s schema:encodingFormat ?h . ?s search:matches [ search:query \"" + searchText + "\" ] . ?s ?p ?o . \n" +
-                "OPTIONAL { ?o ?p2 ?o2 } . MINUS { ?s schema:description ?o } }"
+                "OPTIONAL { ?o ?p2 ?o2 } . MINUS { ?s schema:text ?o } }"
 
         runMediaQueryAndPopulateResults(sparqlQuery)
     }
@@ -234,7 +344,7 @@
     }
 
     function populateMediaInfoTable(allMediaItems) {
-        const SCHEMA_ROOT = "http://schema.org/";
+        const mediaItemsAsMap = parent.jsonLdListToMap(allMediaItems);
 
         const tbody = document.createElement('tbody');
 
@@ -263,6 +373,9 @@
                     case 'application/pdf':
                         contentObject = new PDFContent(name, alternateName, fileLocation, encodingFormat);
                         break;
+                    case 'message/rfc822':
+                        contentObject = new EmailContent(name, alternateName, fileLocation, encodingFormat, currentMediaItem, mediaItemsAsMap);
+                        break;
                     default:
                         contentObject = new Content(name, alternateName, fileLocation, encodingFormat, true);
                 }
@@ -277,7 +390,7 @@
                 tr.appendChild(iconTd);
 
                 const descriptionTd = document.createElement('td');
-                descriptionTd.innerHTML = contentObject.displayName();
+                descriptionTd.appendChild(contentObject.displayName());
                 descriptionTd.style = 'vertical-align: middle';
                 tr.appendChild(descriptionTd);
 

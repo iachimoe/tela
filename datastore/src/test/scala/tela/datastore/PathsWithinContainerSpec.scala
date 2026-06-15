@@ -40,4 +40,11 @@ class PathsWithinContainerSpec extends BaseSpec {
       TikaPathInfo("innermostFolder/file.txt", "/middleZip.zip/innermostZip.zip/file.txt")
     ) should ===("rootFolder/middleZip.zip/middleFolder/innermostZip.zip/innermostFolder/file.txt")
   }
+
+  "toString" should "produce output like a case class" in {
+    new PathsWithinContainer(Vector(
+      TikaPathInfo("next.zip", "/next.zip"),
+      TikaPathInfo("folder1/file.txt", "/next.zip/file.txt")
+    )).toString should ===("PathsWithinContainer(Vector(TikaPathInfo(next.zip,/next.zip), TikaPathInfo(folder1/file.txt,/next.zip/file.txt)))")
+  }
 }

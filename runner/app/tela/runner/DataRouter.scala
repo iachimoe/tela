@@ -1,10 +1,11 @@
-package misc
+package tela.runner
 
-import javax.inject.Inject
 import play.api.routing.Router.Routes
 import play.api.routing.SimpleRouter
-import play.api.routing.sird._
+import play.api.routing.sird.*
 import tela.web.DataController
+
+import javax.inject.Inject
 
 class DataRouter @Inject()(controller: DataController) extends SimpleRouter
 {

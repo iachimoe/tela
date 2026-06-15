@@ -1,11 +1,12 @@
 package tela.datastore
 
-import java.io.{BufferedInputStream, ByteArrayInputStream, StringReader, StringWriter}
+import java.io.{BufferedInputStream, StringReader, StringWriter}
 import java.net.URI
 import java.nio.file.{Files, Path}
-import java.security.MessageDigest
+import java.security.{DigestInputStream, MessageDigest}
 import java.util.{Formatter, Locale, UUID}
 import com.typesafe.scalalogging.Logger
+import org.apache.commons.math3.optim.linear.SolutionCallback
 import org.apache.tika.config.{ServiceLoader, TikaConfig}
 import org.apache.tika.metadata.{HttpHeaders, Metadata, TikaCoreProperties}
 import org.apache.tika.parser.{AutoDetectParser, ParseContext, RecursiveParserWrapper}
@@ -17,16 +18,18 @@ import org.eclipse.rdf4j.repository.sail.SailRepository
 import org.eclipse.rdf4j.rio.helpers.{StatementCollector, XMLWriterSettings}
 import org.eclipse.rdf4j.rio.{RDFFormat, Rio, WriterConfig}
 import org.eclipse.rdf4j.sail.lucene.LuceneSail
-import org.eclipse.rdf4j.sail.memory.MemoryStore
+import org.eclipse.rdf4j.sail.nativerdf.NativeStore
 import org.slf4j.LoggerFactory
 import tela.baseinterfaces.{ComplexObject, DataStoreConnection, XMPPSession}
-import tela.datastore.DataStoreConnectionImpl._
+import tela.datastore.DataStoreConnectionImpl.*
 import tela.datastore.PathsWithinContainer.TikaPathInfo
 
+import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import scala.concurrent.{ExecutionContext, Future}
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.*
+import scala.util.{Failure, Success}
 
 object DataStoreConnectionImpl {
   private[datastore] val MediaItemsFolderName = "mediaItems"
@@ -69,13 +72,13 @@ class DataStoreConnectionImpl(root: Path, user: String,
                               xmppSession: XMPPSession, tikaConfigFile: Path, generateUUID: () => UUID,
                               executionContext: ExecutionContext) extends DataStoreConnection {
   private implicit val ec: ExecutionContext = executionContext
-  private val memoryStore: MemoryStore = new MemoryStore(root.toFile)
+  private val nativeStore: NativeStore = new NativeStore(root.toFile)
   private val luceneSail = new LuceneSail()
   luceneSail.setParameter(LuceneSail.LUCENE_DIR_KEY, root.resolve(LuceneDirectoryName).toString)
   // Using the EnglishAnalyzer for now for better stemming of English. Should probably be configurable.
   luceneSail.setParameter(LuceneSail.ANALYZER_CLASS_KEY, "org.apache.lucene.analysis.en.EnglishAnalyzer")
   luceneSail.setParameter(LuceneSail.QUERY_ANALYZER_CLASS_KEY, "org.apache.lucene.analysis.en.EnglishAnalyzer")
-  luceneSail.setBaseSail(memoryStore)
+  luceneSail.setBaseSail(nativeStore)
 
   private[datastore] val repository = new SailRepository(luceneSail)
   repository.init()
@@ -83,8 +86,12 @@ class DataStoreConnectionImpl(root: Path, user: String,
 
   private val metadataMapper = new MetadataMapper(genericFileDataMap, dataMapping)
 
-  //TODO This rigmarole with the ServiceLoader is needed because without it the classloader it was defaulting to could
-  //not find the ICalParser. This means that any service loader related config in the tika config file will be ignored.
+  //TODO This rigmarole with the ServiceLoader is needed because without it the classloader it was defaulting to
+  //when running in the play framework (i.e. when actually running tela) could not find the ICalParser.
+  //Note that this did not happen with the unit tests, so they will all pass even without this specific ServiceLoader being used.
+  //Right now I'm not sure of the best way to fix this. Perhaps we should just specify a ServiceLoader that does what we want in our tika.xml
+  //For now, the fact that we are explicitly setting a ServiceLoader here means that any service loader related config
+  //in the tika config file will be ignored.
   private val tikaParser = new RecursiveParserWrapper(
     new AutoDetectParser(new TikaConfig(tikaConfigFile, new ServiceLoader(this.getClass.getClassLoader))))
 
@@ -129,21 +136,25 @@ class DataStoreConnectionImpl(root: Path, user: String,
     })
   }
 
-  override def storeMediaItem(tempFileLocation: Path, originalFileName: Path, lastModified: Option[LocalDateTime]): Future[Unit] = Future {
+  override def storeMediaItem(tempFileLocation: Path, originalFileName: Path, lastModified: Option[LocalDateTime]): Future[Unit] = {
     log.info("Request to store file at location {} for user {}", tempFileLocation, user)
-    val fileContentAsByteArray = try {
-      Files.readAllBytes(tempFileLocation)
-    } finally {
-      //TODO no longer necessary - play deletes temp file
-      tempFileLocation.toFile.delete()
+
+    (for {
+      hash <- calculateHashForFileContent(tempFileLocation)
+      _ <- storeFileContent(tempFileLocation, hash)
+      // We get tika to process the file from the temporary rather than the permanent location,
+      // on the grounds that the temporary location is likely on a local filesytem,
+      // whereas the permanent location could be, for example, and NFS mount where access would be slower.
+      _ <- storeMetadataAndIndexText(originalFileName, tempFileLocation, hash, lastModified)
+    } yield {
+      log.info("Finished storing file at location {} for user {}", tempFileLocation, user)
       ()
+    }).andThen {
+      case _ =>
+        //TODO should be no longer necessary as play apparently deletes temp file
+        tempFileLocation.toFile.delete()
+        ()
     }
-    val hash = calculateHashForFileContent(fileContentAsByteArray)
-
-    storeFileContent(fileContentAsByteArray, hash)
-
-    storeMetadataAndIndexText(originalFileName, fileContentAsByteArray, hash, lastModified)
-    log.info("Finished storing file at location {} for user {}", tempFileLocation, user)
   }
 
   override def retrieveMediaItem(hash: String): Future[Option[Path]] = Future {
@@ -157,7 +168,7 @@ class DataStoreConnectionImpl(root: Path, user: String,
     convertRDFModelToJson(QueryResults.asModel(connection.prepareGraphQuery(QueryLanguage.SPARQL, query).evaluate()))
   }
 
-  private def storeFileContent(fileContentAsByteArray: Array[Byte], hash: String): Unit = {
+  private def storeFileContent(sourceLocation: Path, hash: String): Future[Unit] = Future {
     val storeLocation = root.resolve(MediaItemsFolderName)
     if (!Files.exists(storeLocation)) {
       Files.createDirectory(storeLocation)
@@ -165,59 +176,97 @@ class DataStoreConnectionImpl(root: Path, user: String,
     }
 
     log.info("Storing file with hash {} for user {}", hash, user)
-    Files.write(root.resolve(MediaItemsFolderName).resolve(hash), fileContentAsByteArray)
+    Files.copy(sourceLocation, root.resolve(MediaItemsFolderName).resolve(hash), REPLACE_EXISTING)
     ()
   }
 
-  private def storeMetadataAndIndexText(originalFileName: Path, fileContentAsByteArray: Array[Byte], hash: String, lastModified: Option[LocalDateTime]): Unit = {
-    log.info("Extracting metadata for file with hash {}", hash)
-    val handler = new RecursiveParserWrapperHandler(new BasicContentHandlerFactory(BasicContentHandlerFactory.HANDLER_TYPE.TEXT, -1))
-    val context = new ParseContext()
-    val overallMetadata = new Metadata()
+  private def storeMetadataAndIndexText(originalFileName: Path, fileLocation: Path, hash: String, lastModified: Option[LocalDateTime]): Future[Unit] = {
+    Future {
+      log.info("Extracting metadata for file with hash {}", hash)
+      val handler = new RecursiveParserWrapperHandler(new BasicContentHandlerFactory(BasicContentHandlerFactory.HANDLER_TYPE.TEXT, -1))
+      val context = new ParseContext()
+      val overallMetadata = new Metadata()
 
-    overallMetadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, originalFileName.toString)
-    lastModified.foreach(date => overallMetadata.set(TikaCoreProperties.MODIFIED, date.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)))
+      overallMetadata.set(TikaCoreProperties.RESOURCE_NAME_KEY, originalFileName.toString)
+      lastModified.foreach(date => overallMetadata.set(TikaCoreProperties.MODIFIED, date.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)))
 
-    val stream = new BufferedInputStream(new ByteArrayInputStream(fileContentAsByteArray))
-    tikaParser.parse(stream, handler, overallMetadata, context)
-    log.info("Storing metadata for file with hash {}", hash)
-    connection.add(createMetadataGraphForMultipleFiles(handler.getMetadataList.asScala.toVector, originalFileName, hash))
+      val stream = new BufferedInputStream(Files.newInputStream(fileLocation))
+      try {
+        tikaParser.parse(stream, handler, overallMetadata, context)
+      } finally {
+        stream.close()
+      }
+      handler.getMetadataList.asScala.toVector
+    }.transformWith {
+      case Success(filesMetadata) =>
+        log.info("Storing metadata for file with hash {}", hash)
+        createMetadataGraphForMultipleFiles(filesMetadata, originalFileName, hash)
+      case Failure(e) =>
+        log.error(s"Error storing metadata for file with hash $hash", e)
+        Future.successful(())
+    }
   }
 
-  private def createMetadataGraphForMultipleFiles(filesMetadata: Vector[Metadata], originalFileName: Path, hash: String) = {
-    val pathsInfo = new PathsWithinContainer(for {
-      metadata <- filesMetadata
-      embeddedRelationshipId <- Option(metadata.get(TikaCoreProperties.EMBEDDED_RELATIONSHIP_ID))
-      embeddedResourcePath <- Option(metadata.get(TikaCoreProperties.EMBEDDED_RESOURCE_PATH))
-    } yield TikaPathInfo(embeddedRelationshipId, embeddedResourcePath))
+  private def processTikaPathInfo[T](metadata: Metadata, toYield: (String, String) => T): Option[T] = {
+    Option(metadata.get(TikaCoreProperties.EMBEDDED_RESOURCE_PATH)).map(embeddedResourcePath => {
+      // The tar part of a tarball doesn't have an INTERNAL_PATH
+      // In fact INTERNAL_PATH, when it exists, might always be the same as RESOURCE_NAME_KEY
+      // but this is not completely clear. Conceptually it makes more sense to use INTERNAL_PATH where possible.
+      // The case where neither is present necessitates using the empty string,
+      // otherwise emails with attachments but no subject line within mbox files break.
+      val internalPath = Option(metadata.get(TikaCoreProperties.INTERNAL_PATH)).
+        orElse(Option(metadata.get(TikaCoreProperties.RESOURCE_NAME_KEY))).getOrElse("")
 
-    val allFilesMetadata = filesMetadata.map(fileMetadata => createMetadataGraphForIndividualFile(fileMetadata, pathsInfo, originalFileName, hash))
-    val allMetadataAsGraph = new LinkedHashModel()
-    allFilesMetadata.foreach(allMetadataAsGraph.addAll)
-    allMetadataAsGraph
+      toYield(internalPath, embeddedResourcePath)
+    })
+  }
+
+  private def createMetadataGraphForMultipleFiles(filesMetadata: Vector[Metadata], originalFileName: Path, hash: String): Future[Unit] = {
+    val pathsInfo = new PathsWithinContainer(filesMetadata.flatMap(metadata =>
+      processTikaPathInfo(metadata, (internalPath, embeddedResourcePath) => TikaPathInfo(internalPath, embeddedResourcePath))))
+
+    // If we do too many metadata conversions at once, we can run out of memory with large datasets,
+    // whereas inserting to the data store individually for each file's metadata is prohibitvely slow.
+    // Groups of 10000 has seemed reasonable in testing, but might be an idea to make this configurable going forward.
+    filesMetadata.iterator.grouped(10000).foldLeft(Future.successful(())) { (acc, metadataGroup) =>
+      acc.flatMap { _ =>
+        Future {
+          val metadataGroupAsGraph = new LinkedHashModel()
+          metadataGroup.map(metadata => {
+            createMetadataGraphForIndividualFile(metadata, pathsInfo, originalFileName, hash)
+          }).foreach(metadataGroupAsGraph.addAll)
+          val startTime = System.currentTimeMillis()
+          connection.add(metadataGroupAsGraph)
+          val endTime = System.currentTimeMillis()
+          log.info("Insertion into datastore took {} ms", endTime - startTime)
+        }
+      }
+    }
   }
 
   private def createMetadataGraphForIndividualFile(individualFileMetadata: Metadata, pathsInfo: PathsWithinContainer, originalFileName: Path, hash: String): LinkedHashModel = {
-    val metadataMap = individualFileMetadata.names.map(key => key -> individualFileMetadata.get(key)).toMap
+    val maybePathToFile = processTikaPathInfo(individualFileMetadata, (internalPath, embeddedResourcePath) =>
+      pathsInfo.getCompletePath(TikaPathInfo(internalPath, embeddedResourcePath)))
+    val metadataMap = individualFileMetadata.names.map(key => key -> individualFileMetadata.getValues(key).toVector).toMap
 
-    val maybePathToFile = for {
-      embeddedRelationshipId <- metadataMap.get(TikaCoreProperties.EMBEDDED_RELATIONSHIP_ID)
-      embeddedResourcePath <- metadataMap.get(TikaCoreProperties.EMBEDDED_RESOURCE_PATH.getName)
-    } yield pathsInfo.getCompletePath(TikaPathInfo(embeddedRelationshipId, embeddedResourcePath))
-
-    metadataMapper.convertMetadataToRDF(
-      URNBaseForUUIDs + generateUUID(),
-      metadataMap(HttpHeaders.CONTENT_TYPE),
+    metadataMapper.convertMetadataToRDF(URNBaseForUUIDs + generateUUID(),
+      metadataMap.get(HttpHeaders.CONTENT_TYPE).flatMap(_.headOption),
       metadataMap,
-      metadataMap.get(TikaCoreProperties.TIKA_CONTENT.getName),
+      metadataMap.get(TikaCoreProperties.TIKA_CONTENT.getName).flatMap(_.headOption),
       maybePathToFile.map(path => s"$hash/$path").getOrElse(hash),
       maybePathToFile.map(path => Path.of(path).getFileName.toString).getOrElse(originalFileName.toString))
   }
 
-  private def calculateHashForFileContent(allBytes: Array[Byte]): String = {
-    //TODO Change to SHA-256?
-    val messageDigest = MessageDigest.getInstance("SHA1")
-    messageDigest.update(allBytes, 0, allBytes.length)
+  private def calculateHashForFileContent(fileLocation: Path): Future[String] = Future {
+    val messageDigest = MessageDigest.getInstance("SHA-256")
+    val buffer = Array.ofDim[Byte](8192)
+    val digestInputStream = new DigestInputStream(Files.newInputStream(fileLocation), messageDigest)
+    try {
+      while (digestInputStream.read(buffer) != -1) {}
+    } finally {
+      digestInputStream.close()
+    }
+
     val formatter = new Formatter()
     messageDigest.digest().toVector.foreach((b: Byte) => formatter.format(Locale.getDefault, "%02x", b))
     formatter.toString

@@ -1,4 +1,4 @@
-package misc
+package tela.runner
 
 import org.apache.pekko.actor.SupervisorStrategy.{Resume, Stop}
 import org.apache.pekko.actor.{ActorInitializationException, ActorKilledException, DeathPactException, OneForOneStrategy, SupervisorStrategy, SupervisorStrategyConfigurator}

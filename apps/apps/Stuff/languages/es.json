@@ -3,5 +3,10 @@
     "search": "Buscar",
     "uploadSucceeded": "Subida completada",
     "uploadFailed": "Error con la subida",
-    "view": "Ver"
+    "view": "Ver",
+    "date": "Fecha",
+    "subject": "Asunto",
+    "from": "De",
+    "to": "Para",
+    "cc": "Cc"
 }

@@ -1,6 +1,6 @@
 package tela.web
 
-import java.net.URI
+import java.net.{URI, URLDecoder}
 import java.nio.file.{FileSystem, FileSystems, Files, Path, Paths, ProviderNotFoundException}
 import org.apache.pekko.actor.ActorRef
 import org.apache.pekko.pattern.ask
@@ -10,9 +10,10 @@ import play.api.Logging
 import play.api.http.HttpEntity.Streamed
 import play.api.libs.Files.TemporaryFile
 import play.api.libs.json.JsValue
-import play.api.mvc._
-import tela.web.SessionManager._
+import play.api.mvc.*
+import tela.web.SessionManager.*
 
+import java.nio.charset.StandardCharsets
 import java.time.LocalDateTime
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -89,15 +90,15 @@ class DataController @Inject()(
     r.copy(body = r.body.asInstanceOf[Streamed].copy(contentType = None))
   }
 
-  // Was originally going to do the file extraction in the data layer, but as the returned by FileSystem objects
-  // contain a reference to the FileSystem, it seems unwise to be passing them around via Pekko,
+  // Was originally going to do the file extraction in the data layer, but as the Path objects returned by
+  // FileSystem objects contain a reference to the FileSystem, it seems unwise to be passing them around via Pekko,
   // especially if we want to run the data layer in a different JVM in the future, using, for example, Pekko cluster.
   private def getChildFromArchive(archive: Path, childPath: String): Future[Option[(Path, Vector[FileSystem])]] = {
     if (childPath.isEmpty) Future.successful(None)
     else Future {
       //TODO Conceivably this could be quite slow, e.g. for a big zip file on an NFS share
       //Consider using different execution context?
-      recursivelyGetPathForChild(FileSystems.newFileSystem(archive), Paths.get(childPath), None, Vector.empty)
+      recursivelyGetPathForChild(FileSystems.newFileSystem(archive), Paths.get(URLDecoder.decode(childPath, StandardCharsets.UTF_8)), None, Vector.empty)
     } recover {
       case _: ProviderNotFoundException => None
     }
@@ -123,7 +124,8 @@ class DataController @Inject()(
           val newfs = FileSystems.newFileSystem(fileSystem.getPath(firstPartWithParents.toString))
           recursivelyGetPathForChild(newfs, allPartsExceptFirst, None, fileSystem +: oldFileSystems)
         } catch {
-          case _: Throwable =>
+          case e: Throwable =>
+            logger.info(s"Exception when attempting to download $childPath from $parent", e)
             // The most likely cases are FileSystemNotFoundException and ProviderNotFoundException
             // but we want to close the filesystems we opened for any kind of exception
             closeFileSystems(fileSystem +: oldFileSystems)

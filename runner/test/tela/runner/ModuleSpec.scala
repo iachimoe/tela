@@ -1,11 +1,14 @@
+package tela.runner
+
+import com.typesafe.config.ConfigFactory
+import org.scalatest.matchers.should.Matchers.*
+import play.api.Configuration
+import tela.baseinterfaces.*
+import tela.baseinterfaces.DataStoreConnection.DataLocationPredicateKey
+import tela.runner.Module.DataStoreSettings
+
 import java.net.URI
 import java.nio.file.Paths
-
-import Module.DataStoreSettings
-import com.typesafe.config.ConfigFactory
-import org.scalatest.matchers.should.Matchers._
-import play.api.Configuration
-import tela.baseinterfaces._
 
 class ModuleSpec extends BaseSpec {
   "loadXMPPSettings" should "generate XMPPSettings object from config" in {
@@ -28,7 +31,7 @@ class ModuleSpec extends BaseSpec {
 
     Module.loadDataStoreSettings(testConfig, getResource("mappings.json")) should ===(
       DataStoreSettings(Paths.get("/opt/datastore"),
-        ComplexObject(new URI("http://schema.org/MediaObject"), Map(new URI("http://schema.org/alternateName") -> SimpleObject(Vector("hashPredicate"), DataType.Text))),
+        ComplexObject(new URI("http://schema.org/MediaObject"), Map(new URI("http://schema.org/alternateName") -> SimpleObject(Vector(DataLocationPredicateKey), DataType.Text))),
         Map(
           "text/plain" -> ComplexObject(new URI("http://schema.org/MediaObject"), Map(new URI("http://schema.org/name") -> SimpleObject(Vector("resourceName"), DataType.Text))),
           "audio/mpeg" -> ComplexObject(new URI("http://schema.org/AudioObject"), Map(new URI("http://schema.org/name") -> SimpleObject(Vector("dc:title"), DataType.Text)))

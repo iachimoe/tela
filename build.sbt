@@ -2,17 +2,16 @@ name := "tela"
 
 version in Global := "0.0"
 
-scalaVersion in Global := "3.3.3"
+scalaVersion in Global := "3.3.8"
 
 lazy val commonSettings = List(
-  //This doesn't seem to work properly in intellij anymore, hopefully will be fixed in the future
-  /*scalacOptions ++= Seq(
+  scalacOptions ++= Seq(
     "-Wvalue-discard",
     "-Xfatal-warnings"
   ),
   Test / scalacOptions --= Seq(
     "-Wvalue-discard",
-  )*/
+  )
 )
 
 lazy val tela = (project in file(".")) aggregate(runner, baseinterfaces, xmpp, web, datastore)
