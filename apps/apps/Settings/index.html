@@ -1,100 +1,149 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
+  <link href="{{bootstrapCss}}" rel="stylesheet" />
 
-<link href="{{bootstrapCss}}" rel="stylesheet">
-
-<style>
+  <style>
     .form-control-sm {
-        width: 100%;
+      width: 100%;
     }
-</style>
+  </style>
 
-<script>
+  <script>
     function getLanguages() {
-        const client = new XMLHttpRequest();
+      const client = new XMLHttpRequest()
 
-        client.open('GET', "/settings/languages");
+      client.open("GET", "/settings/languages")
 
-        client.onload = () => {
-            const info = JSON.parse(client.response);
-            const languages = info["languages"];
-            const selectedLanguage = info["selected"];
-            Object.keys(languages).forEach(function (item) {
-                const option = document.createElement("option");
-                option.value = item;
-                option.innerHTML = languages[item];
+      client.onload = () => {
+        const info = JSON.parse(client.response)
+        const languages = info["languages"]
+        const selectedLanguage = info["selected"]
+        Object.keys(languages).forEach(function (item) {
+          const option = document.createElement("option")
+          option.value = item
+          option.innerHTML = languages[item]
 
-                if (selectedLanguage === item) {
-                    option.selected = true;
-                }
+          if (selectedLanguage === item) {
+            option.selected = true
+          }
 
-                document.getElementById("languages").appendChild(option);
-            });
-        };
+          document.getElementById("languages").appendChild(option)
+        })
+      }
 
-        client.send();
+      client.send()
     }
 
     function changePassword() {
-        if (document.getElementById("newPassword").value !== document.getElementById("confirmNewPassword").value) {
-            showPasswordChangeResult("{{changePasswordFailed}}");
+      if (
+        document.getElementById("newPassword").value !==
+        document.getElementById("confirmNewPassword").value
+      ) {
+        showPasswordChangeResult("{{changePasswordFailed}}")
+      } else {
+        const client = new XMLHttpRequest()
+
+        client.open("PUT", "/settings/password")
+        client.setRequestHeader(
+          "Content-Type",
+          "application/x-www-form-urlencoded",
+        )
+
+        client.onload = () => {
+          if (client.status === 200) {
+            showPasswordChangeResult("{{changePasswordSucceeded}}")
+          } else {
+            showPasswordChangeResult("{{changePasswordFailed}}")
+          }
         }
-        else {
-            const client = new XMLHttpRequest();
 
-            client.open("PUT", "/settings/password");
-            client.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-
-            client.onload = () => {
-                if (client.status === 200) {
-                    showPasswordChangeResult("{{changePasswordSucceeded}}");
-                } else {
-                    showPasswordChangeResult("{{changePasswordFailed}}");
-                }
-            };
-
-            client.send("oldPassword=" + document.getElementById("oldPassword").value + "&newPassword=" + document.getElementById("newPassword").value);
-        }
-        clearChangePasswordFields();
+        client.send(
+          "oldPassword=" +
+            document.getElementById("oldPassword").value +
+            "&newPassword=" +
+            document.getElementById("newPassword").value,
+        )
+      }
+      clearChangePasswordFields()
     }
 
     function showPasswordChangeResult(message) {
-        const passwordChangedMessage = document.getElementById("passwordChangeMessage");
-        passwordChangedMessage.innerHTML = message;
-        passwordChangedMessage.style.display = "block";
+      const passwordChangedMessage = document.getElementById(
+        "passwordChangeMessage",
+      )
+      passwordChangedMessage.innerHTML = message
+      passwordChangedMessage.style.display = "block"
     }
 
     function clearChangePasswordFields() {
-        document.getElementById("oldPassword").value = "";
-        document.getElementById("newPassword").value = "";
-        document.getElementById("confirmNewPassword").value = "";
+      document.getElementById("oldPassword").value = ""
+      document.getElementById("newPassword").value = ""
+      document.getElementById("confirmNewPassword").value = ""
     }
 
     function setLanguage(language) {
-        const client = new XMLHttpRequest();
+      const client = new XMLHttpRequest()
 
-        client.open("PUT", "/settings/language");
-        client.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+      client.open("PUT", "/settings/language")
+      client.setRequestHeader(
+        "Content-Type",
+        "application/x-www-form-urlencoded",
+      )
 
-        client.onload = () => {
-            parent.location.reload();
-        };
+      client.onload = () => {
+        parent.location.reload()
+      }
 
-        client.send("language=" + language);
+      client.send("language=" + language)
     }
-</script>
-<body onLoad="getLanguages()">
-<div style="padding: 3px">
-    <label for="languages">{{changeLanguage}}</label>
-    <select id="languages" class="form-control form-control-sm" onChange="setLanguage(this.options[this.selectedIndex].value)"></select>
-    <hr/>
-    <label for="oldPassword">{{changePassword}}</label>
-    <div id="passwordChangeMessage" class="alert alert-primary" style="display: none"></div>
-    <label for="oldPassword" class="visually-hidden">{{oldPasswordLabel}}</label><input type="password" id="oldPassword" placeholder="{{oldPasswordLabel}}" class="form-control form-control-sm"/>
-    <label for="newPassword" class="visually-hidden">{{newPasswordLabel}}</label><input type="password" id="newPassword" placeholder="{{newPasswordLabel}}" class="form-control form-control-sm"/>
-    <label for="confirmNewPassword" class="visually-hidden">{{confirmNewPasswordLabel}}</label><input type="password" id="confirmNewPassword" placeholder="{{confirmNewPasswordLabel}}" class="form-control form-control-sm"/>
-    <button type="button" onclick="changePassword()" class="btn btn-primary btn-sm btn-block" style="width: 100%">{{changePassword}}</button>
-</div>
-
-</body>
+  </script>
+  <body onLoad="getLanguages()">
+    <div style="padding: 3px">
+      <label for="languages">{{changeLanguage}}</label>
+      <select
+        id="languages"
+        class="form-control form-control-sm"
+        onChange="setLanguage(this.options[this.selectedIndex].value)"
+      ></select>
+      <hr />
+      <label for="oldPassword">{{changePassword}}</label>
+      <div
+        id="passwordChangeMessage"
+        class="alert alert-primary"
+        style="display: none"
+      ></div>
+      <label for="oldPassword" class="visually-hidden"
+        >{{oldPasswordLabel}}</label
+      ><input
+        type="password"
+        id="oldPassword"
+        placeholder="{{oldPasswordLabel}}"
+        class="form-control form-control-sm"
+      />
+      <label for="newPassword" class="visually-hidden"
+        >{{newPasswordLabel}}</label
+      ><input
+        type="password"
+        id="newPassword"
+        placeholder="{{newPasswordLabel}}"
+        class="form-control form-control-sm"
+      />
+      <label for="confirmNewPassword" class="visually-hidden"
+        >{{confirmNewPasswordLabel}}</label
+      ><input
+        type="password"
+        id="confirmNewPassword"
+        placeholder="{{confirmNewPasswordLabel}}"
+        class="form-control form-control-sm"
+      />
+      <button
+        type="button"
+        onclick="changePassword()"
+        class="btn btn-primary btn-sm btn-block"
+        style="width: 100%"
+      >
+        {{changePassword}}
+      </button>
+    </div>
+  </body>
 </html>

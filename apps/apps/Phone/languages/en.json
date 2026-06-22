@@ -1,6 +1,6 @@
 {
-    "unsupportedBrowserError": "Your browser does not support voice/video calls.",
-    "hangUp": "Hang up",
-    "audioOnly": "Audio only",
-    "generalError": "An unexpected telephony error occurred."
+  "unsupportedBrowserError": "Your browser does not support voice/video calls.",
+  "hangUp": "Hang up",
+  "audioOnly": "Audio only",
+  "generalError": "An unexpected telephony error occurred."
 }

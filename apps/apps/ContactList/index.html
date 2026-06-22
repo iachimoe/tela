@@ -1,172 +1,218 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
+  <link href="{{bootstrapCss}}" rel="stylesheet" />
 
-<link href="{{bootstrapCss}}" rel="stylesheet">
-
-<style>
+  <style>
     .presenceBubble {
-        width: 12px;
-        height: 12px;
-        float: left;
-        margin-top: 5px;
-        border-radius: 50%;
+      width: 12px;
+      height: 12px;
+      float: left;
+      margin-top: 5px;
+      border-radius: 50%;
     }
 
     ul {
-        list-style-type:none;
+      list-style-type: none;
     }
 
     li {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.875rem;
+      padding: 0.25rem 0.5rem;
+      font-size: 0.875rem;
     }
 
     .contact-form {
-        padding: 3px;
+      padding: 3px;
     }
-</style>
+  </style>
 
-<script>
-    let connection = null;
+  <script>
+    let connection = null
 
     function establishConnection() {
-        parent.createEventsWebSocket(conn => connection = conn, e => {
-            const message = JSON.parse(e.data);
-            if (message["action"] === "addContacts") {
-                const contacts = message["data"];
-                displayAddedContacts(contacts);
-            }
-            else if (message["action"] === "presenceUpdate") {
-                const update = message["data"];
-                changePresenceBubbleForContact(update["contact"], update["presence"]);
-            }
-            else if (message["action"] === "selfPresenceUpdate") {
-                document.getElementById("selfPresenceSelector").value = message["data"]["presence"];
-            }
-        });
+      parent.createEventsWebSocket(
+        (conn) => (connection = conn),
+        (e) => {
+          const message = JSON.parse(e.data)
+          if (message["action"] === "addContacts") {
+            const contacts = message["data"]
+            displayAddedContacts(contacts)
+          } else if (message["action"] === "presenceUpdate") {
+            const update = message["data"]
+            changePresenceBubbleForContact(
+              update["contact"],
+              update["presence"],
+            )
+          } else if (message["action"] === "selfPresenceUpdate") {
+            document.getElementById("selfPresenceSelector").value =
+              message["data"]["presence"]
+          }
+        },
+      )
 
-        connection.onopen = () => {
-            const json = {"action": "getContactList"};
-            connection.send(JSON.stringify(json));
-        };
+      connection.onopen = () => {
+        const json = { action: "getContactList" }
+        connection.send(JSON.stringify(json))
+      }
     }
 
     function displayAddedContacts(contacts) {
-        contacts.forEach(function (item) {
-            if (getContact(item["contact"]) == null) {
-                const container = createContactNode(item["contact"]);
-                document.getElementById("contacts").appendChild(container);
-                changePresenceBubbleForContact(item["contact"], item["presence"]);
-            }
-        });
+      contacts.forEach(function (item) {
+        if (getContact(item["contact"]) == null) {
+          const container = createContactNode(item["contact"])
+          document.getElementById("contacts").appendChild(container)
+          changePresenceBubbleForContact(item["contact"], item["presence"])
+        }
+      })
     }
 
     function changePresenceBubbleForContact(contact, presence) {
-        const contactDiv = getContact(contact);
+      const contactDiv = getContact(contact)
 
-        if (contactDiv != null) {
-            const mappings = {"available": "limegreen", "away": "yellow", "donotdisturb": "red", "unknown": "grey"};
-            contactDiv.querySelector("div.presenceBubble").style.backgroundColor = mappings[presence];
+      if (contactDiv != null) {
+        const mappings = {
+          available: "limegreen",
+          away: "yellow",
+          donotdisturb: "red",
+          unknown: "grey",
         }
+        contactDiv.querySelector("div.presenceBubble").style.backgroundColor =
+          mappings[presence]
+      }
     }
 
     function getContact(contact) {
-        for (let i = 0; i < document.getElementById("contacts").childNodes.length; i++) {
-            const child = document.getElementById("contacts").childNodes[i];
+      for (
+        let i = 0;
+        i < document.getElementById("contacts").childNodes.length;
+        i++
+      ) {
+        const child = document.getElementById("contacts").childNodes[i]
 
-            if (child.nodeType === 1) {
-                if (child.getAttribute("jid") === contact) {
-                    return child;
-                }
-            }
+        if (child.nodeType === 1) {
+          if (child.getAttribute("jid") === contact) {
+            return child
+          }
         }
-        return null;
+      }
+      return null
     }
 
     function createContactNode(item) {
-        const container = document.createElement("li");
-        container.setAttribute("jid", item);
-        container.setAttribute("draggable", "true");
-        container.setAttribute("ondragstart", "drag(event)");
-        container.setAttribute("class", "contactNode blah");
+      const container = document.createElement("li")
+      container.setAttribute("jid", item)
+      container.setAttribute("draggable", "true")
+      container.setAttribute("ondragstart", "drag(event)")
+      container.setAttribute("class", "contactNode blah")
 
-        addEventListeners(container, item);
+      addEventListeners(container, item)
 
-        const children = ["<div class='presenceBubble'></div>", "<span>&NonBreakingSpace;" + item + "</span>"];
-        children.forEach(function (child) {
-            container.appendChild(createHtmlElementFromText(child));
-        });
+      const children = [
+        "<div class='presenceBubble'></div>",
+        "<span>&NonBreakingSpace;" + item + "</span>",
+      ]
+      children.forEach(function (child) {
+        container.appendChild(createHtmlElementFromText(child))
+      })
 
-        return container;
+      return container
     }
 
     function addEventListeners(container, item) {
-        container.addEventListener('touchmove', function (event) {
-            event.preventDefault();
-            if (event.targetTouches.length === 1) {
-                parent.childTouchDragMove(window, event.targetTouches[0]);
-            }
-        }, false);
+      container.addEventListener(
+        "touchmove",
+        function (event) {
+          event.preventDefault()
+          if (event.targetTouches.length === 1) {
+            parent.childTouchDragMove(window, event.targetTouches[0])
+          }
+        },
+        false,
+      )
 
-        container.addEventListener('touchstart', function (event) {
-            event.preventDefault();
-            if (event.targetTouches.length === 1) {
-                parent.childTouchDragStart(window, event.targetTouches[0], item);
-            }
-        }, false);
+      container.addEventListener(
+        "touchstart",
+        function (event) {
+          event.preventDefault()
+          if (event.targetTouches.length === 1) {
+            parent.childTouchDragStart(window, event.targetTouches[0], item)
+          }
+        },
+        false,
+      )
 
-        container.addEventListener('touchend', function (event) {
-            event.preventDefault();
-            parent.childTouchDragEnd(window, event.changedTouches[0]);
-        }, false);
+      container.addEventListener(
+        "touchend",
+        function (event) {
+          event.preventDefault()
+          parent.childTouchDragEnd(window, event.changedTouches[0])
+        },
+        false,
+      )
     }
 
     function createHtmlElementFromText(code) {
-        const div = document.createElement('div');
-        div.innerHTML = code;
-        return div.firstChild;
+      const div = document.createElement("div")
+      div.innerHTML = code
+      return div.firstChild
     }
 
     function setPresence(presence) {
-        const json = {"action": "setPresence", "data": presence};
-        connection.send(JSON.stringify(json));
+      const json = { action: "setPresence", data: presence }
+      connection.send(JSON.stringify(json))
     }
 
     function sendAddContactRequest() {
-        if (document.getElementById("contactToAdd").value !== "") {
-            const json = {"action": "addContact", "data": document.getElementById("contactToAdd").value};
-            connection.send(JSON.stringify(json));
-            document.getElementById("contactToAdd").value = "";
+      if (document.getElementById("contactToAdd").value !== "") {
+        const json = {
+          action: "addContact",
+          data: document.getElementById("contactToAdd").value,
         }
+        connection.send(JSON.stringify(json))
+        document.getElementById("contactToAdd").value = ""
+      }
     }
 
     function drag(ev) {
-        ev.dataTransfer.setData("text", ev.target.attributes["jid"].value);
+      ev.dataTransfer.setData("text", ev.target.attributes["jid"].value)
     }
-</script>
+  </script>
 
-<body onLoad="establishConnection()">
-
-<div style="display: flex; flex-direction: column">
-    <div class="contact-form">
-        <select id="selfPresenceSelector" class="form-control form-control-sm" onChange="setPresence(this.value)">
-            <option value="available">{{available}}</option>
-            <option value="away">{{away}}</option>
-            <option value="donotdisturb">{{doNotDisturb}}</option>
+  <body onLoad="establishConnection()">
+    <div style="display: flex; flex-direction: column">
+      <div class="contact-form">
+        <select
+          id="selfPresenceSelector"
+          class="form-control form-control-sm"
+          onChange="setPresence(this.value)"
+        >
+          <option value="available">{{available}}</option>
+          <option value="away">{{away}}</option>
+          <option value="donotdisturb">{{doNotDisturb}}</option>
         </select>
-    </div>
-    <div style="display: flex">
-        <div style="flex: 2" class="contact-form"><input id="contactToAdd" class="form-control form-control-sm" type="text" autocapitalize="off" /></div>
-        <div style="flex: 1" class="contact-form">
-            <button type="button" onclick="sendAddContactRequest()" class="btn btn-primary btn-sm btn-block" style="width: 100%">
-                {{addContact}}
-            </button>
+      </div>
+      <div style="display: flex">
+        <div style="flex: 2" class="contact-form">
+          <input
+            id="contactToAdd"
+            class="form-control form-control-sm"
+            type="text"
+            autocapitalize="off"
+          />
         </div>
-    </div>
-    <div>
+        <div style="flex: 1" class="contact-form">
+          <button
+            type="button"
+            onclick="sendAddContactRequest()"
+            class="btn btn-primary btn-sm btn-block"
+            style="width: 100%"
+          >
+            {{addContact}}
+          </button>
+        </div>
+      </div>
+      <div>
         <ul id="contacts" class="col-12 list-group"></ul>
+      </div>
     </div>
-</div>
-
-</body>
+  </body>
 </html>

@@ -1,340 +1,356 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{indexPageTitle}}</title>
-    <link href="{{bootstrapCss}}" rel="stylesheet">
+    <link href="{{bootstrapCss}}" rel="stylesheet" />
 
     <script>
-        //BEGIN JSON-LD FUNCTIONS
-        const JSON_LD_ID = "@id";
-        const JSON_LD_TYPE = "@type";
-        const JSON_LD_VALUE = "@value";
+      //BEGIN JSON-LD FUNCTIONS
+      const JSON_LD_ID = "@id";
+      const JSON_LD_TYPE = "@type";
+      const JSON_LD_VALUE = "@value";
 
-        function createJsonLdObjectAsString(id, type, data) {
-            const jsonLdObject = {};
-            jsonLdObject[JSON_LD_ID] = id;
-            jsonLdObject[JSON_LD_TYPE] = [type];
+      function createJsonLdObjectAsString(id, type, data) {
+          const jsonLdObject = {};
+          jsonLdObject[JSON_LD_ID] = id;
+          jsonLdObject[JSON_LD_TYPE] = [type];
 
-            Object.keys(data).forEach(key => {
-                jsonLdObject[key] = createJsonLdValue(data[key]);
-            });
+          Object.keys(data).forEach(key => {
+              jsonLdObject[key] = createJsonLdValue(data[key]);
+          });
 
-            return JSON.stringify([jsonLdObject]);
-        }
+          return JSON.stringify([jsonLdObject]);
+      }
 
-        function getValueOfJsonLdField(data, field) {
-            const dataContainer = data[field];
-            if (dataContainer == null) return null;
-            else return dataContainer[0][JSON_LD_VALUE];
-        }
-
-        function getIdsFromJsonLdField(data, field) {
+      function getValueOfJsonLdField(data, field) {
           const dataContainer = data[field];
           if (dataContainer == null) return null;
-          else return dataContainer.map(item => item[JSON_LD_ID]);
-        }
+          else return dataContainer[0][JSON_LD_VALUE];
+      }
 
-        function createJsonLdValue(value) {
-            const result = {};
-            result[JSON_LD_VALUE] = value;
-            return [result];
-        }
+      function getIdsFromJsonLdField(data, field) {
+        const dataContainer = data[field];
+        if (dataContainer == null) return null;
+        else return dataContainer.map(item => item[JSON_LD_ID]);
+      }
 
-        function jsonLdListToMap(list) {
-          return Object.fromEntries(
-            list.map(obj => [obj[JSON_LD_ID], obj])
-          )
-        }
-        // BEGIN WEBSOCKET FUNCTIONS
+      function createJsonLdValue(value) {
+          const result = {};
+          result[JSON_LD_VALUE] = value;
+          return [result];
+      }
 
-        function createEventsWebSocket(saveConnectionReference, onmessage, tryNumber = 0) {
-            const webSocket = new WebSocket([
-                window.location.protocol.toLowerCase() === 'https:' ? 'wss://' : 'ws://',
-                window.location.host,
-                '/events'
-            ].join(''))
-            saveConnectionReference(webSocket)
-            webSocket.onmessage = onmessage
-            webSocket.onclose = () => {
-                if (tryNumber > 0) {
-                    const timeout = (tryNumber < 6 ? Math.pow(tryNumber, 2) : 60) * 1000
-                    setTimeout(() => createEventsWebSocket(saveConnectionReference, onmessage, tryNumber + 1), timeout)
-                } else {
-                    createEventsWebSocket(saveConnectionReference, onmessage, tryNumber + 1)
-                }
-            }
-            webSocket.onopen = () => {
-                tryNumber = 0
-            }
-            return webSocket
-        }
+      function jsonLdListToMap(list) {
+        return Object.fromEntries(
+          list.map(obj => [obj[JSON_LD_ID], obj])
+        )
+      }
+      // BEGIN WEBSOCKET FUNCTIONS
 
-        // BEGIN FRAME MANAGEMENT FUNCTIONS
+      function createEventsWebSocket(saveConnectionReference, onmessage, tryNumber = 0) {
+          const webSocket = new WebSocket([
+              window.location.protocol.toLowerCase() === 'https:' ? 'wss://' : 'ws://',
+              window.location.host,
+              '/events'
+          ].join(''))
+          saveConnectionReference(webSocket)
+          webSocket.onmessage = onmessage
+          webSocket.onclose = () => {
+              if (tryNumber > 0) {
+                  const timeout = (tryNumber < 6 ? Math.pow(tryNumber, 2) : 60) * 1000
+                  setTimeout(() => createEventsWebSocket(saveConnectionReference, onmessage, tryNumber + 1), timeout)
+              } else {
+                  createEventsWebSocket(saveConnectionReference, onmessage, tryNumber + 1)
+              }
+          }
+          webSocket.onopen = () => {
+              tryNumber = 0
+          }
+          return webSocket
+      }
 
-        const appInfo = {{appInfo}};
+      // BEGIN FRAME MANAGEMENT FUNCTIONS
 
-        const defaultApp = "{{defaultApp}}";
+      const appInfo = {{appInfo}};
 
-        const localizedAppNames = {{localizedAppNames}};
+      const defaultApp = "{{defaultApp}}";
 
-        let itemToSendToSwitchedApp = null;
+      const localizedAppNames = {{localizedAppNames}};
 
-        const appToFrameMap = {};
+      let itemToSendToSwitchedApp = null;
 
-        let currentApp = null;
+      const appToFrameMap = {};
 
-        function addFrame(info) {
-            const frame = document.createElement("iframe");
-            frame.setAttribute("src", info["address"]);
+      let currentApp = null;
 
-            if (info["usesLargeScreen"]) {
-                frame.classList.add("main-apps");
-            } else {
-                frame.classList.add("small-screen-apps");
-            }
+      function addFrame(info) {
+          const frame = document.createElement("iframe");
+          frame.setAttribute("src", info["address"]);
 
-            if (info["name"] === defaultApp) {
-                currentApp = frame;
-                frame.classList.add("active-app");
-            }
+          if (info["usesLargeScreen"]) {
+              frame.classList.add("main-apps");
+          } else {
+              frame.classList.add("small-screen-apps");
+          }
 
-            addFrameLinkToTouchDropSelector(info);
-            addFrameToSwitcherSelector(info);
-            document.getElementById("appSwitcherSelector").value = defaultApp;
-            appToFrameMap[info["name"]] = frame;
-            document.getElementById("app-container").appendChild(frame);
-        }
+          if (info["name"] === defaultApp) {
+              currentApp = frame;
+              frame.classList.add("active-app");
+          }
 
-        function addFrameLinkToTouchDropSelector(info) {
-            const link = document.createElement("a");
-            link.addEventListener('click', function (event) {
-                event.preventDefault();
-                switchToApp(info["name"]);
-                hideAppSelectorForDrops();
-            });
-            link.innerHTML = localizedAppNames[info["name"]];
-            link.href = "#";
+          addFrameLinkToTouchDropSelector(info);
+          addFrameToSwitcherSelector(info);
+          document.getElementById("appSwitcherSelector").value = defaultApp;
+          appToFrameMap[info["name"]] = frame;
+          document.getElementById("app-container").appendChild(frame);
+      }
 
-            const listItem = document.createElement("li");
-            listItem.classList.add("list-group-item");
-            listItem.appendChild(link);
-            document.getElementById("appSelectorForTouchDropsLinks").appendChild(listItem);
-        }
+      function addFrameLinkToTouchDropSelector(info) {
+          const link = document.createElement("a");
+          link.addEventListener('click', function (event) {
+              event.preventDefault();
+              switchToApp(info["name"]);
+              hideAppSelectorForDrops();
+          });
+          link.innerHTML = localizedAppNames[info["name"]];
+          link.href = "#";
 
-        function addFrameToSwitcherSelector(info) {
-            const option = document.createElement("option");
-            option.setAttribute("value", info["name"]);
-            option.innerHTML = localizedAppNames[info["name"]];
-            document.getElementById("appSwitcherSelector").appendChild(option);
-        }
+          const listItem = document.createElement("li");
+          listItem.classList.add("list-group-item");
+          listItem.appendChild(link);
+          document.getElementById("appSelectorForTouchDropsLinks").appendChild(listItem);
+      }
 
-        function addFrames() {
-            appInfo.forEach(app => addFrame(app));
-        }
+      function addFrameToSwitcherSelector(info) {
+          const option = document.createElement("option");
+          option.setAttribute("value", info["name"]);
+          option.innerHTML = localizedAppNames[info["name"]];
+          document.getElementById("appSwitcherSelector").appendChild(option);
+      }
 
-        function switchToApp(appName) {
-            document.getElementById("appSwitcherSelector").value = appName;
-            Object.keys(appToFrameMap).forEach(function (app) {
-                appToFrameMap[app].classList.remove("active-app");
-            });
-            appToFrameMap[appName].classList.add("active-app");
-            currentApp = appToFrameMap[appName];
+      function addFrames() {
+          appInfo.forEach(app => addFrame(app));
+      }
 
-            if (itemToSendToSwitchedApp != null && typeof currentApp.contentWindow.handleTouchDrop === "function") {
-                currentApp.contentWindow.handleTouchDrop(itemToSendToSwitchedApp);
-            }
-            itemToSendToSwitchedApp = null;
-        }
+      function switchToApp(appName) {
+          document.getElementById("appSwitcherSelector").value = appName;
+          Object.keys(appToFrameMap).forEach(function (app) {
+              appToFrameMap[app].classList.remove("active-app");
+          });
+          appToFrameMap[appName].classList.add("active-app");
+          currentApp = appToFrameMap[appName];
 
-        function showAppSelectorForDrops() {
-            const appSelector = document.getElementById("appSelectorForTouchDrops");
-            appSelector.classList.add("show");
-            appSelector.style.display = "block";
-        }
+          if (itemToSendToSwitchedApp != null && typeof currentApp.contentWindow.handleTouchDrop === "function") {
+              currentApp.contentWindow.handleTouchDrop(itemToSendToSwitchedApp);
+          }
+          itemToSendToSwitchedApp = null;
+      }
 
-        function hideAppSelectorForDrops() {
-            const appSelector = document.getElementById("appSelectorForTouchDrops");
-            appSelector.classList.remove("show");
-            appSelector.style.display = "none";
-        }
+      function showAppSelectorForDrops() {
+          const appSelector = document.getElementById("appSelectorForTouchDrops");
+          appSelector.classList.add("show");
+          appSelector.style.display = "block";
+      }
 
-        // for handling drops to app selector using mouse
-        // (this should be rare as it's only for mobile devices, which use touch rather than mouse)
-        function allowDrop(event) {
-            event.preventDefault();
-        }
+      function hideAppSelectorForDrops() {
+          const appSelector = document.getElementById("appSelectorForTouchDrops");
+          appSelector.classList.remove("show");
+          appSelector.style.display = "none";
+      }
 
-        function drop(event) {
-            event.preventDefault();
-            itemToSendToSwitchedApp = event.dataTransfer.getData("text");
-            showAppSelectorForDrops();
-        }
+      // for handling drops to app selector using mouse
+      // (this should be rare as it's only for mobile devices, which use touch rather than mouse)
+      function allowDrop(event) {
+          event.preventDefault();
+      }
 
-        // BEGIN DRAG/DROP FUNCTIONS
+      function drop(event) {
+          event.preventDefault();
+          itemToSendToSwitchedApp = event.dataTransfer.getData("text");
+          showAppSelectorForDrops();
+      }
 
-        let touchDragItem = null;
+      // BEGIN DRAG/DROP FUNCTIONS
 
-        function childTouchDragMove(window, touch) {
-            const frame = getIframeFromWindow(window);
+      let touchDragItem = null;
 
-            const left = frame.getBoundingClientRect().left + touch.clientX;
-            const top = frame.getBoundingClientRect().top + touch.clientY;
+      function childTouchDragMove(window, touch) {
+          const frame = getIframeFromWindow(window);
 
-            touchDragItem.style.left = left + "px";
-            touchDragItem.style.top = top + "px";
-        }
+          const left = frame.getBoundingClientRect().left + touch.clientX;
+          const top = frame.getBoundingClientRect().top + touch.clientY;
 
-        function childTouchDragEnd(window, touch) {
-            document.body.removeChild(touchDragItem);
-            const frame = getIframeFromWindow(window);
-            const left = (frame.getBoundingClientRect().left + touch.clientX) - 1;
-            const top = frame.getBoundingClientRect().top + touch.clientY;
-            const element = document.elementFromPoint(left, top);
-            if (element.tagName.toLowerCase() === "iframe") {
-                if (typeof element.contentWindow.handleTouchDrop === "function") {
-                    element.contentWindow.handleTouchDrop(touchDragItem.innerHTML);
-                }
-            }
-            else if (element.id === "appSwitcher" || element.id === "appSwitcherSelector") {
-                itemToSendToSwitchedApp = touchDragItem.innerHTML;
-                showAppSelectorForDrops();
-            }
-            touchDragItem = null;
-        }
+          touchDragItem.style.left = left + "px";
+          touchDragItem.style.top = top + "px";
+      }
 
-        function childTouchDragStart(window, touch, item) {
-            const frame = getIframeFromWindow(window);
-            touchDragItem = document.createElement("div");
-            touchDragItem.innerHTML = item;
+      function childTouchDragEnd(window, touch) {
+          document.body.removeChild(touchDragItem);
+          const frame = getIframeFromWindow(window);
+          const left = (frame.getBoundingClientRect().left + touch.clientX) - 1;
+          const top = frame.getBoundingClientRect().top + touch.clientY;
+          const element = document.elementFromPoint(left, top);
+          if (element.tagName.toLowerCase() === "iframe") {
+              if (typeof element.contentWindow.handleTouchDrop === "function") {
+                  element.contentWindow.handleTouchDrop(touchDragItem.innerHTML);
+              }
+          }
+          else if (element.id === "appSwitcher" || element.id === "appSwitcherSelector") {
+              itemToSendToSwitchedApp = touchDragItem.innerHTML;
+              showAppSelectorForDrops();
+          }
+          touchDragItem = null;
+      }
 
-            const left = frame.getBoundingClientRect().left + touch.clientX;
-            const top = frame.getBoundingClientRect().top + touch.clientY;
+      function childTouchDragStart(window, touch, item) {
+          const frame = getIframeFromWindow(window);
+          touchDragItem = document.createElement("div");
+          touchDragItem.innerHTML = item;
 
-            touchDragItem.style.position = "absolute";
-            touchDragItem.style.left = left + "px";
-            touchDragItem.style.top = top + "px";
-            document.body.appendChild(touchDragItem);
-        }
+          const left = frame.getBoundingClientRect().left + touch.clientX;
+          const top = frame.getBoundingClientRect().top + touch.clientY;
 
-        function getIframeFromWindow(window) {
-            const frames = document.getElementsByTagName("iframe");
-            for (let i = 0, len = frames.length; i < len; i++) {
-                if (frames[i].contentWindow === window) {
-                    return frames[i];
-                }
-            }
-            return null;
-        }
+          touchDragItem.style.position = "absolute";
+          touchDragItem.style.left = left + "px";
+          touchDragItem.style.top = top + "px";
+          document.body.appendChild(touchDragItem);
+      }
+
+      function getIframeFromWindow(window) {
+          const frames = document.getElementsByTagName("iframe");
+          for (let i = 0, len = frames.length; i < len; i++) {
+              if (frames[i].contentWindow === window) {
+                  return frames[i];
+              }
+          }
+          return null;
+      }
     </script>
 
     <style>
-        html, body {
-            height: 100%;
+      html,
+      body {
+        height: 100%;
+      }
+
+      .entire-screen {
+        display: grid;
+        grid-template-areas:
+          "welcome logout"
+          "apps apps"
+          "app-selector app-selector";
+        min-height: 100%;
+      }
+
+      .welcome {
+        grid-area: welcome;
+        justify-self: start;
+      }
+
+      .logout {
+        grid-area: logout;
+        justify-self: end;
+      }
+
+      .app-selector {
+        grid-area: app-selector;
+        align-self: end;
+        display: none;
+      }
+
+      #appSelectorForTouchDropsLinks {
+        list-style-type: none;
+      }
+
+      #app-container {
+        grid-area: apps;
+        align-self: stretch;
+        display: grid;
+        grid-template-columns: 2fr 1fr;
+        grid-auto-flow: column;
+      }
+
+      .main-apps {
+        grid-column-start: 1;
+        grid-column-end: 2;
+        grid-row: span 2;
+        height: 540px;
+      }
+      .small-screen-apps {
+        grid-column-start: 2;
+        grid-column-end: 3;
+        height: 270px;
+      }
+
+      iframe {
+        border: 2px inset;
+        width: 100%;
+      }
+
+      /* At the time of writing this seems to be a fairly reasonable of determining whether to use mobile or desktop view */
+      @media only screen and (max-width: 768px) and (orientation: portrait),
+        only screen and (max-width: 1179px) and (orientation: landscape) and (pointer: coarse) and (hover: none) {
+        .main-apps {
+          grid-column: 1 / -1;
+          height: 100%;
         }
 
-        .entire-screen {
-            display: grid;
-            grid-template-areas:
-                    'welcome logout'
-                    'apps apps'
-                    'app-selector app-selector';
-            min-height: 100%;
-        }
-
-        .welcome {
-            grid-area: welcome;
-            justify-self: start;
-        }
-
-        .logout {
-            grid-area: logout;
-            justify-self: end;
+        .small-screen-apps {
+          grid-column: 1 / -1;
+          height: 100%;
         }
 
         .app-selector {
-            grid-area: app-selector;
-            align-self: end;
-            display: none;
-        }
-
-        #appSelectorForTouchDropsLinks {
-            list-style-type:none;
-        }
-
-        #app-container {
-            grid-area: apps;
-            align-self: stretch;
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            grid-auto-flow: column;
-        }
-
-        .main-apps {
-            grid-column-start: 1;
-            grid-column-end: 2;
-            grid-row: span 2;
-            height: 540px;
-        }
-        .small-screen-apps {
-            grid-column-start: 2;
-            grid-column-end: 3;
-            height: 270px;
+          display: block;
         }
 
         iframe {
-            border: 2px inset;
-            width: 100%;
+          display: none;
         }
 
-        /* At the time of writing this seems to be a fairly reasonable of determining whether to use mobile or desktop view */
-        @media only screen and (max-width: 768px) and (orientation: portrait), only screen and (max-width: 1179px) and (orientation: landscape) and (pointer: coarse) and (hover: none) {
-            .main-apps {
-                grid-column: 1 / -1;
-                height: 100%;
-            }
-
-            .small-screen-apps {
-                grid-column: 1 / -1;
-                height: 100%;
-            }
-
-            .app-selector {
-                display: block;
-            }
-
-            iframe {
-                display: none;
-            }
-
-            #app-container {
-                height: 90vh;
-            }
-
-            .active-app {
-                display: inline;
-            }
+        #app-container {
+          height: 90vh;
         }
+
+        .active-app {
+          display: inline;
+        }
+      }
     </style>
-</head>
-<body onload="addFrames()">
+  </head>
+  <body onload="addFrames()">
     <div class="entire-screen">
-        <div class="welcome">{{welcome}} {{user}}</div>
-        <div class="logout"><a href="?logout">{{logout}}</a></div>
-        <div id="app-container"></div>
-        <div ondrop="drop(event)" ondragover="allowDrop(event)" class="app-selector">
-            <select id="appSwitcherSelector" class="form-control" onchange="switchToApp(this.value)"></select>
-        </div>
+      <div class="welcome">{{welcome}} {{user}}</div>
+      <div class="logout"><a href="?logout">{{logout}}</a></div>
+      <div id="app-container"></div>
+      <div
+        ondrop="drop(event)"
+        ondragover="allowDrop(event)"
+        class="app-selector"
+      >
+        <select
+          id="appSwitcherSelector"
+          class="form-control"
+          onchange="switchToApp(this.value)"
+        ></select>
+      </div>
     </div>
-    <div id="appSelectorForTouchDrops" class="modal" tabindex="-1" role="dialog" style="background: rgba(0, 0, 0, 0.8)">
-        <div class="modal-dialog modal-dialog-centered" role="document">
-            <div class="modal-content">
-                <div class="modal-body" style="min-height: 80vh;">
-                    <ul class="list-group" id="appSelectorForTouchDropsLinks"></ul>
-                </div>
-            </div>
+    <div
+      id="appSelectorForTouchDrops"
+      class="modal"
+      tabindex="-1"
+      role="dialog"
+      style="background: rgba(0, 0, 0, 0.8)"
+    >
+      <div class="modal-dialog modal-dialog-centered" role="document">
+        <div class="modal-content">
+          <div class="modal-body" style="min-height: 80vh">
+            <ul class="list-group" id="appSelectorForTouchDropsLinks"></ul>
+          </div>
         </div>
+      </div>
     </div>
-</body>
+  </body>
 </html>

@@ -1,12 +1,12 @@
 {
-    "upload": "Subir",
-    "search": "Buscar",
-    "uploadSucceeded": "Subida completada",
-    "uploadFailed": "Error con la subida",
-    "view": "Ver",
-    "date": "Fecha",
-    "subject": "Asunto",
-    "from": "De",
-    "to": "Para",
-    "cc": "Cc"
+  "upload": "Subir",
+  "search": "Buscar",
+  "uploadSucceeded": "Subida completada",
+  "uploadFailed": "Error con la subida",
+  "view": "Ver",
+  "date": "Fecha",
+  "subject": "Asunto",
+  "from": "De",
+  "to": "Para",
+  "cc": "Cc"
 }

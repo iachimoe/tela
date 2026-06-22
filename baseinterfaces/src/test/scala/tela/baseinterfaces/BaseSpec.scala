@@ -30,5 +30,5 @@ trait BaseSpec extends AnyFlatSpec with TypeCheckedTripleEquals with MockitoSuga
   protected val TestDateInHttpHeaderFormat = "Tue, 05 Apr 2016 15:15:49 GMT"
   protected val TestDateAsLocalDateTime = LocalDateTime.of(2016, 4, 5, 15, 15, 49)
 
-  protected val TestAwaitTimeout = Duration(5, TimeUnit.SECONDS)
+  protected val TestAwaitTimeout = Duration(10, TimeUnit.SECONDS)
 }

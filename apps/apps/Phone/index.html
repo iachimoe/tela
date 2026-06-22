@@ -1,248 +1,284 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
+  <link href="{{bootstrapCss}}" rel="stylesheet" />
 
-<link href="{{bootstrapCss}}" rel="stylesheet">
-
-<script>
+  <script>
     function callingIsSupportedByBrowser() {
-        return RTCPeerConnection && navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
+      return (
+        RTCPeerConnection &&
+        navigator.mediaDevices &&
+        navigator.mediaDevices.getUserMedia
+      )
     }
 
     // BEGIN DRAG/DROP
     function allowDrop(event) {
-        event.preventDefault();
+      event.preventDefault()
     }
 
     function drop(event) {
-        event.preventDefault();
-        if (callingIsSupportedByBrowser()) {
-            callUser(event.dataTransfer.getData("text"));
-        }
+      event.preventDefault()
+      if (callingIsSupportedByBrowser()) {
+        callUser(event.dataTransfer.getData("text"))
+      }
     }
 
     function handleTouchDrop(item) {
-        if (callingIsSupportedByBrowser()) {
-            callUser(item);
-        }
+      if (callingIsSupportedByBrowser()) {
+        callUser(item)
+      }
     }
 
     // END DRAG/DROP
 
     // BEGIN WEBSOCKET
 
-    let connection = null;
+    let connection = null
 
     function establishConnection() {
-        if (!callingIsSupportedByBrowser()) {
-            document.getElementById("errorMessage").style.display = "block";
-            document.getElementById("controlPanel").style.visibility = "hidden";
-            return;
-        }
+      if (!callingIsSupportedByBrowser()) {
+        document.getElementById("errorMessage").style.display = "block"
+        document.getElementById("controlPanel").style.visibility = "hidden"
+        return
+      }
 
-        connection = parent.createEventsWebSocket(conn => connection = conn, e => {
-            const message = JSON.parse(e.data);
-            if (message["action"] === "callSignalReceived") {
-                const user = message["data"]["user"];
-                const data = message["data"]["data"];
+      connection = parent.createEventsWebSocket(
+        (conn) => (connection = conn),
+        (e) => {
+          const message = JSON.parse(e.data)
+          if (message["action"] === "callSignalReceived") {
+            const user = message["data"]["user"]
+            const data = message["data"]["data"]
 
-                if (data.hasOwnProperty("candidate")) {
-                    addCandidate(data);
-                }
-                else if (initiatedConnection) {
-                    handleConfirmationOfCall(data);
-                }
-                else {
-                    receiveCall(user, data);
-                }
+            if (data.hasOwnProperty("candidate")) {
+              addCandidate(data)
+            } else if (initiatedConnection) {
+              handleConfirmationOfCall(data)
+            } else {
+              receiveCall(user, data)
             }
-        })
+          }
+        },
+      )
     }
 
     function sendMessage(msg, recipient) {
-        const json = {"action": "sendCallSignal", "data": {"user": recipient, "data": msg}};
-        connection.send(JSON.stringify(json));
+      const json = {
+        action: "sendCallSignal",
+        data: { user: recipient, data: msg },
+      }
+      connection.send(JSON.stringify(json))
     }
 
     // END WEBSOCKET
 
     // BEGIN WEBRTC
 
-    let peerConnection = initialisePeerConnection();
-    let initiatedConnection = false;
+    let peerConnection = initialisePeerConnection()
+    let initiatedConnection = false
 
     function error() {
-        handleEndOfCall();
-        alert("{{generalError}}");
+      handleEndOfCall()
+      alert("{{generalError}}")
     }
 
     function addCandidate(candidate) {
-        peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+      peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
     }
 
     function callUser(user) {
-        startCall(user).then(function () {
-            peerConnection.createOffer().then(offer => {
-                peerConnection.setLocalDescription(new RTCSessionDescription(offer)).then(function () {
-                    initiatedConnection = true;
-                    sendMessage(offer, user);
-                }, error);
-            }, error);
-        }, error);
+      startCall(user).then(function () {
+        peerConnection.createOffer().then((offer) => {
+          peerConnection
+            .setLocalDescription(new RTCSessionDescription(offer))
+            .then(function () {
+              initiatedConnection = true
+              sendMessage(offer, user)
+            }, error)
+        }, error)
+      }, error)
     }
 
     function receiveCall(user, offer) {
-        startCall(user).then(function () {
-            peerConnection.setRemoteDescription(new RTCSessionDescription(offer)).then(function () {
-                peerConnection.createAnswer().then(answer => {
-                    peerConnection.setLocalDescription(new RTCSessionDescription(answer)).then(function () {
-                        sendMessage(answer, user)
-                    }, error);
-                }, error);
-            }, error);
-        }, error);
+      startCall(user).then(function () {
+        peerConnection
+          .setRemoteDescription(new RTCSessionDescription(offer))
+          .then(function () {
+            peerConnection.createAnswer().then((answer) => {
+              peerConnection
+                .setLocalDescription(new RTCSessionDescription(answer))
+                .then(function () {
+                  sendMessage(answer, user)
+                }, error)
+            }, error)
+          }, error)
+      }, error)
     }
 
     function startCall(user) {
-        return navigator.mediaDevices.getUserMedia(getAudioVideoStatus()).then(stream => {
-            peerConnection.oniceconnectionstatechange = function () {
-                if (peerConnection.iceConnectionState === "disconnected" || peerConnection.iceConnectionState === "closed") {
-                    stopTracks(stream);
-                    handleEndOfCall();
-                }
-            };
+      return navigator.mediaDevices
+        .getUserMedia(getAudioVideoStatus())
+        .then((stream) => {
+          peerConnection.oniceconnectionstatechange = function () {
+            if (
+              peerConnection.iceConnectionState === "disconnected" ||
+              peerConnection.iceConnectionState === "closed"
+            ) {
+              stopTracks(stream)
+              handleEndOfCall()
+            }
+          }
 
-            peerConnection.ontrack = function (event) {
-                handleBeginningOfCall(event.streams[0], stream);
-            };
+          peerConnection.ontrack = function (event) {
+            handleBeginningOfCall(event.streams[0], stream)
+          }
 
-            stream.getTracks().forEach(track => peerConnection.addTrack(track, stream));
+          stream
+            .getTracks()
+            .forEach((track) => peerConnection.addTrack(track, stream))
 
-            peerConnection.onicecandidate = function(evt) {
-                if (evt.candidate) {
-                    sendMessage(evt.candidate, user);
-                }
-            };
-        }, error);
+          peerConnection.onicecandidate = function (evt) {
+            if (evt.candidate) {
+              sendMessage(evt.candidate, user)
+            }
+          }
+        }, error)
     }
 
     function initialisePeerConnection() {
-        if (!callingIsSupportedByBrowser())
-            return null;
-        return new RTCPeerConnection({
-            iceServers: [
-                {
-                    urls: "stun:stun.l.google.com:19302"
-                }]
-        });
+      if (!callingIsSupportedByBrowser()) return null
+      return new RTCPeerConnection({
+        iceServers: [
+          {
+            urls: "stun:stun.l.google.com:19302",
+          },
+        ],
+      })
     }
 
     function handleConfirmationOfCall(offer) {
-        peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+      peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
     }
 
     function endCall() {
-        peerConnection.close();
+      peerConnection.close()
 
-        // We no longer get an oniceconnectionstatechange indicating that the connection's closed, so we clean up here.
-        stopTracks(document.getElementById("localVideo").srcObject);
-        handleEndOfCall();
+      // We no longer get an oniceconnectionstatechange indicating that the connection's closed, so we clean up here.
+      stopTracks(document.getElementById("localVideo").srcObject)
+      handleEndOfCall()
     }
 
     function stopTracks(stream) {
-        stream.getTracks().forEach(function (track) { track.stop(); });
+      stream.getTracks().forEach(function (track) {
+        track.stop()
+      })
     }
 
     function getAudioVideoStatus() {
-        if (isAudioOnly()) {
-            return {
-                audio: true
-            }
+      if (isAudioOnly()) {
+        return {
+          audio: true,
         }
-        else {
-            return {
-                audio: true, video: { facingMode: "user" }
-            }
+      } else {
+        return {
+          audio: true,
+          video: { facingMode: "user" },
         }
+      }
     }
 
     function isAudioOnly() {
-        return document.getElementById("audioOnly").checked;
+      return document.getElementById("audioOnly").checked
     }
 
     // END WEBRTC
 
     function handleBeginningOfCall(stream, localStream) {
-        document.getElementById("endCallButton").style.visibility = "visible";
+      document.getElementById("endCallButton").style.visibility = "visible"
 
-        if (!isAudioOnly()) {
-            document.getElementById("videoContainer").style.visibility = "visible";
-            playVideo("remoteVideo", stream);
-            playVideo("localVideo", localStream);
-        }
+      if (!isAudioOnly()) {
+        document.getElementById("videoContainer").style.visibility = "visible"
+        playVideo("remoteVideo", stream)
+        playVideo("localVideo", localStream)
+      }
     }
 
     function playVideo(elementName, stream) {
-        const video = document.getElementById(elementName);
-        video.srcObject = stream;
-        video.play();
+      const video = document.getElementById(elementName)
+      video.srcObject = stream
+      video.play()
     }
 
     function handleEndOfCall() {
-        document.getElementById("endCallButton").style.visibility = "hidden";
-        document.getElementById("videoContainer").style.visibility = "hidden";
-        peerConnection = initialisePeerConnection();
-        initiatedConnection = false;
+      document.getElementById("endCallButton").style.visibility = "hidden"
+      document.getElementById("videoContainer").style.visibility = "hidden"
+      peerConnection = initialisePeerConnection()
+      initiatedConnection = false
     }
-</script>
+  </script>
 
-<style>
+  <style>
     #remoteVideo {
-        width: 640px;
-        height: 480px;
-        top: 0;
-        right: 0;
+      width: 640px;
+      height: 480px;
+      top: 0;
+      right: 0;
     }
 
     #localVideo {
-        width: 100px;
-        height: 100px;
-        z-index: 999;
-        position: absolute;
-        bottom: 0;
-        right: 0;
+      width: 100px;
+      height: 100px;
+      z-index: 999;
+      position: absolute;
+      bottom: 0;
+      right: 0;
     }
 
     #videoContainer {
-        width: 640px;
-        height: 480px;
-        margin: auto;
-        position: relative;
+      width: 640px;
+      height: 480px;
+      margin: auto;
+      position: relative;
     }
 
     @media screen and (max-width: 768px) {
-        #remoteVideo {
-            width: 285px;
-            height: 285px;
-        }
+      #remoteVideo {
+        width: 285px;
+        height: 285px;
+      }
 
-        #videoContainer {
-            width: 285px;
-            height: 285px;
-        }
+      #videoContainer {
+        width: 285px;
+        height: 285px;
+      }
     }
-</style>
-<body ondrop="drop(event)" ondragover="allowDrop(event)" onload="establishConnection()">
-<div style="padding: 5px">
-    <div id="errorMessage" style="display:none">{{unsupportedBrowserError}}</div>
-    <div id="controlPanel">
-        <input type="checkbox" id="audioOnly"/> <label for="audioOnly">{{audioOnly}}</label>
-        <button id="endCallButton" class="btn btn-danger" style="visibility:hidden" onclick="endCall()">{{hangUp}}</button>
-    </div>
+  </style>
+  <body
+    ondrop="drop(event)"
+    ondragover="allowDrop(event)"
+    onload="establishConnection()"
+  >
+    <div style="padding: 5px">
+      <div id="errorMessage" style="display: none">
+        {{unsupportedBrowserError}}
+      </div>
+      <div id="controlPanel">
+        <input type="checkbox" id="audioOnly" />
+        <label for="audioOnly">{{audioOnly}}</label>
+        <button
+          id="endCallButton"
+          class="btn btn-danger"
+          style="visibility: hidden"
+          onclick="endCall()"
+        >
+          {{hangUp}}
+        </button>
+      </div>
 
-    <div id="videoContainer" style="visibility:hidden">
+      <div id="videoContainer" style="visibility: hidden">
         <video id="remoteVideo"></video>
         <video id="localVideo" muted></video>
+      </div>
     </div>
-</div>
-</body>
+  </body>
 </html>

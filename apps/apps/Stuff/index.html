@@ -1,528 +1,675 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
+  <link href="{{bootstrapCss}}" rel="stylesheet" />
+  <link href="{{fontAwesomeCss}}" rel="stylesheet" />
 
-<link href="{{bootstrapCss}}" rel="stylesheet">
-<link href="{{fontAwesomeCss}}" rel="stylesheet">
-
-<script>
-  function twoDimensionalArrayToHtmlTable(array) {
-      const output = [];
-      let i, j;
+  <script>
+    function twoDimensionalArrayToHtmlTable(array) {
+      const output = []
+      let i, j
 
       for (i = 0; i < array.length; i++) {
-        output.push("<tr>");
+        output.push("<tr>")
         for (j = 0; j < array[i].length; j++) {
-          output.push("<td>" + array[i][j] + "</td>");
+          output.push("<td>" + array[i][j] + "</td>")
         }
-        output.push("</tr>");
+        output.push("</tr>")
       }
-      return output.join("");
+      return output.join("")
     }
 
-    const SCHEMA_ROOT = "http://schema.org/";
+    const SCHEMA_ROOT = "http://schema.org/"
     // BEGIN CONTENT DATA TYPES
 
     class Content {
-        constructor(name, alternateName, fileLocation, encodingFormat, expandToFillContainer) {
-            this.name = name;
-            this.alternateName = alternateName;
-            this.fileLocation = fileLocation;
-            this.encodingFormat = encodingFormat;
-            this.expandToFillContainer = expandToFillContainer;
-        }
-
-        icon() {
-            return "fa-regular fa-file"
-        }
-
-        displayName() {
-          const span = document.createElement("span");
-          span.innerText = this.name || this.alternateName || this.encodingFormat;
-          return span;
-        }
-
-        viewObject() {
-            const link = document.createElement('a');
-            link.href = "#";
-            link.innerHTML = "{{view}}";
-
-            link.addEventListener('click', this.showElementInLightbox());
-            return link;
-        }
-
-        fileHref() {
-            return `/data/${this.fileLocation}`
-        }
-
-        lightboxContent() {
-            const iframe = document.createElement('iframe');
-            iframe.src = this.fileHref();
-            return iframe;
-        }
-
-        showElementInLightbox() {
-            const thisRef = this;
-            return function (e) {
-                removeChildNodesFromElement("lightbox_content");
-
-                let sizeStyle = null;
-                if (thisRef.expandToFillContainer) {
-                    sizeStyle = 'width: 100%; height: 100%';
-                } else {
-                    sizeStyle = 'max-width: 100%; max-height: 100%';
-                }
-
-                const element = thisRef.lightboxContent();
-                element.style = sizeStyle + '; background: white';
-                document.getElementById("lightbox_content").appendChild(element);
-                document.getElementById('lightbox').style.display = 'inline';
-                document.getElementById('lightbox').style.zIndex = "999";
-            }
-        }
-    }
-
-    class AudioContent extends Content {
-        constructor(name, alternateName, fileLocation, encodingFormat) {
-            super(name, alternateName, fileLocation, encodingFormat, false);
-        }
-
-        icon() { return "fa-regular fa-file-audio" };
-
-        viewObject() {
-          const iconContainer = document.createElement('i');
-          iconContainer.className = "fa-solid fa-play";
-          const link = document.createElement('a');
-          link.style.color = "inherit";
-          link.href = "#";
-          link.appendChild(iconContainer);
-          const span = document.createElement('span');
-          span.appendChild(link);
-
-          link.addEventListener('click', () => {
-            const audioPlayer = document.createElement("audio");
-            audioPlayer.controls = true;
-            audioPlayer.src = this.fileHref();
-            audioPlayer.style.zIndex = "-1";
-            span.removeChild(link);
-            span.appendChild(audioPlayer);
-          });
-          return span;
-        };
-
-        lightboxContent() { return null };
-    }
-
-    class ImageContent extends Content {
-        constructor(name, alternateName, fileLocation, encodingFormat) {
-            super(name, alternateName, fileLocation, encodingFormat, false);
-        }
-
-        icon() { return "fa-regular fa-file-image" };
-
-        lightboxContent() {
-            const image = document.createElement('img');
-            image.src = this.fileHref();
-            return image;
-        };
-    }
-
-    class VideoContent extends Content {
-        constructor(name, alternateName, fileLocation, encodingFormat) {
-            super(name, alternateName, fileLocation, encodingFormat, false);
-        }
-
-        icon() { return "fa-regular fa-file-video" };
-
-        lightboxContent() {
-            const video = document.createElement('video');
-            video.setAttribute('controls', '');
-            const source = document.createElement("source");
-            source.src = this.fileHref();
-            video.appendChild(source);
-
-            video.addEventListener('click', function (event) {
-                event.stopPropagation();
-            });
-
-            return video;
-        };
-    }
-
-    class CSVContent extends Content {
-        constructor(name, alternateName, fileLocation, encodingFormat) {
-            super(name, alternateName, fileLocation, encodingFormat, true);
-        }
-
-        // Wanted to use regular rather than solid, but perplexingly this doesn't appear in regular
-        icon() { return "fa-solid fa-table" };
-
-        lightboxContent () {
-            //Have to create a div-within-a-div in order to set style because the outer div's style will get clobbered by the calling function
-            const outerContainerDiv = document.createElement('div');
-            const innerContainerDiv = document.createElement('div');
-            innerContainerDiv.style = 'max-width: 100%; max-height: 100%; overflow: auto';
-
-            outerContainerDiv.appendChild(innerContainerDiv);
-
-            const table = document.createElement("table");
-            table.className = "table table-bordered";
-
-            const thisRef = this;
-            const client = new XMLHttpRequest();
-
-            client.open('GET', this.fileHref());
-
-            client.onload = () => {
-                table.innerHTML = thisRef.createTableRowsForCSVContent(client.response);
-            };
-
-            client.send();
-
-            innerContainerDiv.appendChild(table);
-            return outerContainerDiv;
-        };
-
-        createTableRowsForCSVContent(csvContent) {
-            return twoDimensionalArrayToHtmlTable(this.csvToArray(csvContent));
-        };
-
-        csvToArray(csvContent) {
-            let i, currentChar;
-            let currentlyWithinQuotes = true;
-            let previousChar = '';
-            let indexOfCurrentRow = 0;
-            let indexWithinCurrentRow = 0;
-            let currentRow = [''];
-            const result = [currentRow];
-
-            for (i = 0; i < csvContent.length; i++) {
-                currentChar = csvContent.charAt(i);
-                if (currentChar === '"') {
-                    if (currentlyWithinQuotes && previousChar === '"') currentRow[indexWithinCurrentRow] += '"';
-                    currentlyWithinQuotes = !currentlyWithinQuotes
-                } else if (currentlyWithinQuotes && currentChar === ',') {
-                    currentChar = currentRow[++indexWithinCurrentRow] = '';
-                } else if (currentlyWithinQuotes && currentChar === '\n') {
-                    if (previousChar === '\r') currentRow[indexWithinCurrentRow] = currentRow[indexWithinCurrentRow].slice(0, -1);
-
-                    currentChar = '';
-                    currentRow = result[++indexOfCurrentRow] = [''];
-                    indexWithinCurrentRow = 0;
-                } else currentRow[indexWithinCurrentRow] += currentChar;
-                previousChar = currentChar;
-            }
-            return result;
-        };
-    }
-
-    class PDFContent extends Content {
-        constructor(name, alternateName, fileLocation, encodingFormat) {
-            super(name, alternateName, fileLocation, encodingFormat, true);
-        }
-
-        icon() { return "fa-regular fa-file-pdf" };
-    }
-
-    class EmailContent extends Content {
-      constructor(name, alternateName, fileLocation, encodingFormat, emailAsJsonLd, allJsonLdItemsAsMap) {
-        super(name, alternateName, fileLocation, encodingFormat, true);
-        this.emailAsJsonLd = emailAsJsonLd;
-        this.allJsonLdItemsAsMap = allJsonLdItemsAsMap;
+      constructor(
+        name,
+        alternateName,
+        fileLocation,
+        encodingFormat,
+        expandToFillContainer,
+      ) {
+        this.name = name
+        this.alternateName = alternateName
+        this.fileLocation = fileLocation
+        this.encodingFormat = encodingFormat
+        this.expandToFillContainer = expandToFillContainer
       }
 
-      getEmailAddresses(fieldName) {
-        const correspondents = parent.getIdsFromJsonLdField(this.emailAsJsonLd, SCHEMA_ROOT + fieldName);
-        return correspondents?.flatMap(correspondentId => parent.getValueOfJsonLdField(
-          this.allJsonLdItemsAsMap[correspondentId], SCHEMA_ROOT + "email")).filter(x => x != null);
-      }
-
-      formatDate(date) {
-        return new Date(date).toISOString().slice(0, 19).replace("T", " ");
+      icon() {
+        return "fa-regular fa-file"
       }
 
       displayName() {
-        const span = document.createElement('span');
-        const dateSent = this.formatDate(parent.getValueOfJsonLdField(this.emailAsJsonLd, SCHEMA_ROOT + "dateSent"));
-        const subject = this.name || this.alternateName;
-        const senders = this.getEmailAddresses("sender");
-        let correspondent = "";
-        if (senders) {
-          correspondent = "{{from}}: " + senders[0];
-        } else {
-          const toRecipients = this.getEmailAddresses("toRecipient");
-          if (toRecipients) {
-            correspondent = "{{to}}: " + toRecipients[0];
+        const span = document.createElement("span")
+        span.innerText = this.name || this.alternateName || this.encodingFormat
+        return span
+      }
+
+      viewObject() {
+        const link = document.createElement("a")
+        link.href = "#"
+        link.innerHTML = "{{view}}"
+
+        link.addEventListener("click", this.showElementInLightbox())
+        return link
+      }
+
+      fileHref() {
+        return `/data/${this.fileLocation}`
+      }
+
+      lightboxContent() {
+        const iframe = document.createElement("iframe")
+        iframe.src = this.fileHref()
+        return iframe
+      }
+
+      showElementInLightbox() {
+        const thisRef = this
+        return function (e) {
+          removeChildNodesFromElement("lightbox_content")
+
+          let sizeStyle = null
+          if (thisRef.expandToFillContainer) {
+            sizeStyle = "width: 100%; height: 100%"
           } else {
-            const ccRecipients = this.getEmailAddresses("ccRecipient");
+            sizeStyle = "max-width: 100%; max-height: 100%"
+          }
+
+          const element = thisRef.lightboxContent()
+          element.style = sizeStyle + "; background: white"
+          document.getElementById("lightbox_content").appendChild(element)
+          document.getElementById("lightbox").style.display = "inline"
+          document.getElementById("lightbox").style.zIndex = "999"
+        }
+      }
+    }
+
+    class AudioContent extends Content {
+      constructor(name, alternateName, fileLocation, encodingFormat) {
+        super(name, alternateName, fileLocation, encodingFormat, false)
+      }
+
+      icon() {
+        return "fa-regular fa-file-audio"
+      }
+
+      viewObject() {
+        const iconContainer = document.createElement("i")
+        iconContainer.className = "fa-solid fa-play"
+        const link = document.createElement("a")
+        link.style.color = "inherit"
+        link.href = "#"
+        link.appendChild(iconContainer)
+        const span = document.createElement("span")
+        span.appendChild(link)
+
+        link.addEventListener("click", () => {
+          const audioPlayer = document.createElement("audio")
+          audioPlayer.controls = true
+          audioPlayer.src = this.fileHref()
+          audioPlayer.style.zIndex = "-1"
+          span.removeChild(link)
+          span.appendChild(audioPlayer)
+        })
+        return span
+      }
+
+      lightboxContent() {
+        return null
+      }
+    }
+
+    class ImageContent extends Content {
+      constructor(name, alternateName, fileLocation, encodingFormat) {
+        super(name, alternateName, fileLocation, encodingFormat, false)
+      }
+
+      icon() {
+        return "fa-regular fa-file-image"
+      }
+
+      lightboxContent() {
+        const image = document.createElement("img")
+        image.src = this.fileHref()
+        return image
+      }
+    }
+
+    class VideoContent extends Content {
+      constructor(name, alternateName, fileLocation, encodingFormat) {
+        super(name, alternateName, fileLocation, encodingFormat, false)
+      }
+
+      icon() {
+        return "fa-regular fa-file-video"
+      }
+
+      lightboxContent() {
+        const video = document.createElement("video")
+        video.setAttribute("controls", "")
+        const source = document.createElement("source")
+        source.src = this.fileHref()
+        video.appendChild(source)
+
+        video.addEventListener("click", function (event) {
+          event.stopPropagation()
+        })
+
+        return video
+      }
+    }
+
+    class CSVContent extends Content {
+      constructor(name, alternateName, fileLocation, encodingFormat) {
+        super(name, alternateName, fileLocation, encodingFormat, true)
+      }
+
+      // Wanted to use regular rather than solid, but perplexingly this doesn't appear in regular
+      icon() {
+        return "fa-solid fa-table"
+      }
+
+      lightboxContent() {
+        //Have to create a div-within-a-div in order to set style because the outer div's style will get clobbered by the calling function
+        const outerContainerDiv = document.createElement("div")
+        const innerContainerDiv = document.createElement("div")
+        innerContainerDiv.style =
+          "max-width: 100%; max-height: 100%; overflow: auto"
+
+        outerContainerDiv.appendChild(innerContainerDiv)
+
+        const table = document.createElement("table")
+        table.className = "table table-bordered"
+
+        const thisRef = this
+        const client = new XMLHttpRequest()
+
+        client.open("GET", this.fileHref())
+
+        client.onload = () => {
+          table.innerHTML = thisRef.createTableRowsForCSVContent(
+            client.response,
+          )
+        }
+
+        client.send()
+
+        innerContainerDiv.appendChild(table)
+        return outerContainerDiv
+      }
+
+      createTableRowsForCSVContent(csvContent) {
+        return twoDimensionalArrayToHtmlTable(this.csvToArray(csvContent))
+      }
+
+      csvToArray(csvContent) {
+        let i, currentChar
+        let currentlyWithinQuotes = true
+        let previousChar = ""
+        let indexOfCurrentRow = 0
+        let indexWithinCurrentRow = 0
+        let currentRow = [""]
+        const result = [currentRow]
+
+        for (i = 0; i < csvContent.length; i++) {
+          currentChar = csvContent.charAt(i)
+          if (currentChar === '"') {
+            if (currentlyWithinQuotes && previousChar === '"')
+              currentRow[indexWithinCurrentRow] += '"'
+            currentlyWithinQuotes = !currentlyWithinQuotes
+          } else if (currentlyWithinQuotes && currentChar === ",") {
+            currentChar = currentRow[++indexWithinCurrentRow] = ""
+          } else if (currentlyWithinQuotes && currentChar === "\n") {
+            if (previousChar === "\r")
+              currentRow[indexWithinCurrentRow] = currentRow[
+                indexWithinCurrentRow
+              ].slice(0, -1)
+
+            currentChar = ""
+            currentRow = result[++indexOfCurrentRow] = [""]
+            indexWithinCurrentRow = 0
+          } else currentRow[indexWithinCurrentRow] += currentChar
+          previousChar = currentChar
+        }
+        return result
+      }
+    }
+
+    class PDFContent extends Content {
+      constructor(name, alternateName, fileLocation, encodingFormat) {
+        super(name, alternateName, fileLocation, encodingFormat, true)
+      }
+
+      icon() {
+        return "fa-regular fa-file-pdf"
+      }
+    }
+
+    class EmailContent extends Content {
+      constructor(
+        name,
+        alternateName,
+        fileLocation,
+        encodingFormat,
+        emailAsJsonLd,
+        allJsonLdItemsAsMap,
+      ) {
+        super(name, alternateName, fileLocation, encodingFormat, true)
+        this.emailAsJsonLd = emailAsJsonLd
+        this.allJsonLdItemsAsMap = allJsonLdItemsAsMap
+      }
+
+      getEmailAddresses(fieldName) {
+        const correspondents = parent.getIdsFromJsonLdField(
+          this.emailAsJsonLd,
+          SCHEMA_ROOT + fieldName,
+        )
+        return correspondents
+          ?.flatMap((correspondentId) =>
+            parent.getValueOfJsonLdField(
+              this.allJsonLdItemsAsMap[correspondentId],
+              SCHEMA_ROOT + "email",
+            ),
+          )
+          .filter((x) => x != null)
+      }
+
+      formatDate(date) {
+        return new Date(date).toISOString().slice(0, 19).replace("T", " ")
+      }
+
+      displayName() {
+        const span = document.createElement("span")
+        const dateSent = this.formatDate(
+          parent.getValueOfJsonLdField(
+            this.emailAsJsonLd,
+            SCHEMA_ROOT + "dateSent",
+          ),
+        )
+        const subject = this.name || this.alternateName
+        const senders = this.getEmailAddresses("sender")
+        let correspondent = ""
+        if (senders) {
+          correspondent = "{{from}}: " + senders[0]
+        } else {
+          const toRecipients = this.getEmailAddresses("toRecipient")
+          if (toRecipients) {
+            correspondent = "{{to}}: " + toRecipients[0]
+          } else {
+            const ccRecipients = this.getEmailAddresses("ccRecipient")
             if (ccRecipients) {
-              correspondent = "{{cc}}: " + ccRecipients[0];
+              correspondent = "{{cc}}: " + ccRecipients[0]
             }
           }
         }
 
-        span.innerText = `${dateSent} ${correspondent} ${subject}`;
+        span.innerText = `${dateSent} ${correspondent} ${subject}`
 
-        return span;
-      };
+        return span
+      }
 
-      icon() { return "fa-regular fa-envelope" };
+      icon() {
+        return "fa-regular fa-envelope"
+      }
 
-      lightboxContent () {
+      lightboxContent() {
         //Have to create a div-within-a-div in order to set style because the outer div's style will get clobbered by the calling function
-        const outerContainerDiv = document.createElement('div');
-        const innerContainerDiv = document.createElement('div');
-        innerContainerDiv.style = 'max-width: 100%; max-height: 100%; overflow: auto';
+        const outerContainerDiv = document.createElement("div")
+        const innerContainerDiv = document.createElement("div")
+        innerContainerDiv.style =
+          "max-width: 100%; max-height: 100%; overflow: auto"
 
-        outerContainerDiv.appendChild(innerContainerDiv);
+        outerContainerDiv.appendChild(innerContainerDiv)
 
-        const client = new XMLHttpRequest();
+        const client = new XMLHttpRequest()
 
-        const emailId = this.emailAsJsonLd["@id"];
-        client.open('GET', "/data?uri=" + emailId);
+        const emailId = this.emailAsJsonLd["@id"]
+        client.open("GET", "/data?uri=" + emailId)
 
         client.onload = () => {
-          const dateSent = this.formatDate(parent.getValueOfJsonLdField(this.emailAsJsonLd, SCHEMA_ROOT + "dateSent"));
-          const subject = this.name || this.alternateName;
-          const senders = this.getEmailAddresses("sender");
-          const toRecipients = this.getEmailAddresses("toRecipient");
-          const ccRecipients = this.getEmailAddresses("ccRecipient");
+          const dateSent = this.formatDate(
+            parent.getValueOfJsonLdField(
+              this.emailAsJsonLd,
+              SCHEMA_ROOT + "dateSent",
+            ),
+          )
+          const subject = this.name || this.alternateName
+          const senders = this.getEmailAddresses("sender")
+          const toRecipients = this.getEmailAddresses("toRecipient")
+          const ccRecipients = this.getEmailAddresses("ccRecipient")
 
-          const tableContents = [];
-          if (dateSent) tableContents.push(["{{date}}", dateSent]);
-          if (subject) tableContents.push(["{{subject}}", subject]);
-          if (senders) tableContents.push(["{{from}}", senders]);
-          if (toRecipients) tableContents.push(["{{to}}", toRecipients]);
-          if (ccRecipients) tableContents.push(["{{cc}}", ccRecipients]);
+          const tableContents = []
+          if (dateSent) tableContents.push(["{{date}}", dateSent])
+          if (subject) tableContents.push(["{{subject}}", subject])
+          if (senders) tableContents.push(["{{from}}", senders])
+          if (toRecipients) tableContents.push(["{{to}}", toRecipients])
+          if (ccRecipients) tableContents.push(["{{cc}}", ccRecipients])
 
-          const table = document.createElement("table");
-          table.innerHTML = twoDimensionalArrayToHtmlTable(tableContents);
+          const table = document.createElement("table")
+          table.innerHTML = twoDimensionalArrayToHtmlTable(tableContents)
 
-          const emailContent = parent.jsonLdListToMap(JSON.parse(client.response))[emailId];
-          const bodyText = parent.getValueOfJsonLdField(emailContent, SCHEMA_ROOT + "text")?.trim();
+          const emailContent = parent.jsonLdListToMap(
+            JSON.parse(client.response),
+          )[emailId]
+          const bodyText = parent
+            .getValueOfJsonLdField(emailContent, SCHEMA_ROOT + "text")
+            ?.trim()
 
-          const content = document.createElement('pre');
-          content.style = 'white-space: pre-wrap';
-          content.innerText = bodyText;
+          const content = document.createElement("pre")
+          content.style = "white-space: pre-wrap"
+          content.innerText = bodyText
 
-          innerContainerDiv.appendChild(table);
-          innerContainerDiv.appendChild(content);
-        };
+          innerContainerDiv.appendChild(table)
+          innerContainerDiv.appendChild(content)
+        }
 
-        client.send();
+        client.send()
 
-        return outerContainerDiv;
-      };
+        return outerContainerDiv
+      }
     }
     // END CONTENT DATA TYPES
 
     function loadMediaItemInfo() {
-        const searchText = document.getElementById("searchText").value;
+      const searchText = document.getElementById("searchText").value
 
-        const sparqlQuery = searchText === "" ?
+      const sparqlQuery =
+        searchText === ""
+          ? "PREFIX schema: <http://schema.org/>\n" +
+            "CONSTRUCT { ?s ?p ?o . ?o ?p2 ?o2 }\n" +
+            "WHERE { ?s ?p ?o . OPTIONAL { ?o ?p2 ?o2 } . MINUS { ?s schema:text ?o } }"
+          : "PREFIX search: <http://www.openrdf.org/contrib/lucenesail#>\n" +
             "PREFIX schema: <http://schema.org/>\n" +
-                "CONSTRUCT { ?s ?p ?o . ?o ?p2 ?o2 }\n" +
-                "WHERE { ?s ?p ?o . OPTIONAL { ?o ?p2 ?o2 } . MINUS { ?s schema:text ?o } }" :
-            "PREFIX search: <http://www.openrdf.org/contrib/lucenesail#>\n" +
-                "PREFIX schema: <http://schema.org/>\n" +
-                "CONSTRUCT { ?s ?p ?o . ?o ?p2 ?o2 }\n" +
-                "WHERE { ?s schema:encodingFormat ?h . ?s search:matches [ search:query \"" + searchText + "\" ] . ?s ?p ?o . \n" +
-                "OPTIONAL { ?o ?p2 ?o2 } . MINUS { ?s schema:text ?o } }"
+            "CONSTRUCT { ?s ?p ?o . ?o ?p2 ?o2 }\n" +
+            'WHERE { ?s schema:encodingFormat ?h . ?s search:matches [ search:query "' +
+            searchText +
+            '" ] . ?s ?p ?o . \n' +
+            "OPTIONAL { ?o ?p2 ?o2 } . MINUS { ?s schema:text ?o } }"
 
-        runMediaQueryAndPopulateResults(sparqlQuery)
+      runMediaQueryAndPopulateResults(sparqlQuery)
     }
 
     function runMediaQueryAndPopulateResults(query) {
-        const client = new XMLHttpRequest();
+      const client = new XMLHttpRequest()
 
-        client.open('GET', "/data?query=" +  encodeURIComponent(query));
+      client.open("GET", "/data?query=" + encodeURIComponent(query))
 
-        client.onload = () => {
-            populateMediaInfoTable(JSON.parse(client.response));
-        };
+      client.onload = () => {
+        populateMediaInfoTable(JSON.parse(client.response))
+      }
 
-        client.send();
+      client.send()
     }
 
     function populateMediaInfoTable(allMediaItems) {
-        const mediaItemsAsMap = parent.jsonLdListToMap(allMediaItems);
+      const mediaItemsAsMap = parent.jsonLdListToMap(allMediaItems)
 
-        const tbody = document.createElement('tbody');
+      const tbody = document.createElement("tbody")
 
-        allMediaItems.forEach(currentMediaItem => {
-            const fullEncodingFormat = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "encodingFormat");
-            if (fullEncodingFormat !== null) {
-                const encodingFormat = fullEncodingFormat.split(';')[0]
-                const fileLocation = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "identifier");
-                const name = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "name");
-                const alternateName = parent.getValueOfJsonLdField(currentMediaItem, SCHEMA_ROOT + "alternateName");
+      allMediaItems.forEach((currentMediaItem) => {
+        const fullEncodingFormat = parent.getValueOfJsonLdField(
+          currentMediaItem,
+          SCHEMA_ROOT + "encodingFormat",
+        )
+        if (fullEncodingFormat !== null) {
+          const encodingFormat = fullEncodingFormat.split(";")[0]
+          const fileLocation = parent.getValueOfJsonLdField(
+            currentMediaItem,
+            SCHEMA_ROOT + "identifier",
+          )
+          const name = parent.getValueOfJsonLdField(
+            currentMediaItem,
+            SCHEMA_ROOT + "name",
+          )
+          const alternateName = parent.getValueOfJsonLdField(
+            currentMediaItem,
+            SCHEMA_ROOT + "alternateName",
+          )
 
-                let contentObject;
-                switch (encodingFormat) {
-                    case 'audio/mp4':
-                        contentObject = new AudioContent(name, alternateName, fileLocation, encodingFormat);
-                        break;
-                    case 'image/jpeg':
-                        contentObject = new ImageContent(name, alternateName, fileLocation, encodingFormat);
-                        break;
-                    case 'video/mp4':
-                        contentObject = new VideoContent(name, alternateName, fileLocation, encodingFormat);
-                        break;
-                    case 'text/csv':
-                        contentObject = new CSVContent(name, alternateName, fileLocation, encodingFormat);
-                        break;
-                    case 'application/pdf':
-                        contentObject = new PDFContent(name, alternateName, fileLocation, encodingFormat);
-                        break;
-                    case 'message/rfc822':
-                        contentObject = new EmailContent(name, alternateName, fileLocation, encodingFormat, currentMediaItem, mediaItemsAsMap);
-                        break;
-                    default:
-                        contentObject = new Content(name, alternateName, fileLocation, encodingFormat, true);
-                }
+          let contentObject
+          switch (encodingFormat) {
+            case "audio/mp4":
+              contentObject = new AudioContent(
+                name,
+                alternateName,
+                fileLocation,
+                encodingFormat,
+              )
+              break
+            case "image/jpeg":
+              contentObject = new ImageContent(
+                name,
+                alternateName,
+                fileLocation,
+                encodingFormat,
+              )
+              break
+            case "video/mp4":
+              contentObject = new VideoContent(
+                name,
+                alternateName,
+                fileLocation,
+                encodingFormat,
+              )
+              break
+            case "text/csv":
+              contentObject = new CSVContent(
+                name,
+                alternateName,
+                fileLocation,
+                encodingFormat,
+              )
+              break
+            case "application/pdf":
+              contentObject = new PDFContent(
+                name,
+                alternateName,
+                fileLocation,
+                encodingFormat,
+              )
+              break
+            case "message/rfc822":
+              contentObject = new EmailContent(
+                name,
+                alternateName,
+                fileLocation,
+                encodingFormat,
+                currentMediaItem,
+                mediaItemsAsMap,
+              )
+              break
+            default:
+              contentObject = new Content(
+                name,
+                alternateName,
+                fileLocation,
+                encodingFormat,
+                true,
+              )
+          }
 
-                const tr = document.createElement('tr');
+          const tr = document.createElement("tr")
 
-                const iconTd = document.createElement('td');
-                iconTd.style = 'vertical-align: middle; padding-right: 0'; //icon cell seems to have too much space on right without setting padding-right to 0...
-                const iconContainer = document.createElement('i');
-                iconContainer.className = contentObject.icon();
-                iconTd.appendChild(iconContainer);
-                tr.appendChild(iconTd);
+          const iconTd = document.createElement("td")
+          iconTd.style = "vertical-align: middle; padding-right: 0" //icon cell seems to have too much space on right without setting padding-right to 0...
+          const iconContainer = document.createElement("i")
+          iconContainer.className = contentObject.icon()
+          iconTd.appendChild(iconContainer)
+          tr.appendChild(iconTd)
 
-                const descriptionTd = document.createElement('td');
-                descriptionTd.appendChild(contentObject.displayName());
-                descriptionTd.style = 'vertical-align: middle';
-                tr.appendChild(descriptionTd);
+          const descriptionTd = document.createElement("td")
+          descriptionTd.appendChild(contentObject.displayName())
+          descriptionTd.style = "vertical-align: middle"
+          tr.appendChild(descriptionTd)
 
-                const contentTd = document.createElement('td');
-                contentTd.style = 'vertical-align: middle';
-                contentTd.appendChild(contentObject.viewObject());
-                tr.appendChild(contentTd);
+          const contentTd = document.createElement("td")
+          contentTd.style = "vertical-align: middle"
+          contentTd.appendChild(contentObject.viewObject())
+          tr.appendChild(contentTd)
 
-                const downloadTd = document.createElement('td');
-                const downloadLink = document.createElement('a');
-                downloadLink.href = contentObject.fileHref();
-                downloadLink.target = "_blank";
-                const downloadIconContainer = document.createElement('i');
-                downloadIconContainer.className = 'fa-solid fa-arrow-down';
-                downloadLink.appendChild(downloadIconContainer);
-                downloadTd.appendChild(downloadLink);
-                tr.appendChild(downloadTd);
+          const downloadTd = document.createElement("td")
+          const downloadLink = document.createElement("a")
+          downloadLink.href = contentObject.fileHref()
+          downloadLink.target = "_blank"
+          const downloadIconContainer = document.createElement("i")
+          downloadIconContainer.className = "fa-solid fa-arrow-down"
+          downloadLink.appendChild(downloadIconContainer)
+          downloadTd.appendChild(downloadLink)
+          tr.appendChild(downloadTd)
 
-                tbody.appendChild(tr);
-            }
-        });
+          tbody.appendChild(tr)
+        }
+      })
 
-        removeChildNodesFromElement("mediaItemsTable");
+      removeChildNodesFromElement("mediaItemsTable")
 
-        document.getElementById("mediaItemsTable").appendChild(tbody);
+      document.getElementById("mediaItemsTable").appendChild(tbody)
     }
 
     function removeChildNodesFromElement(elementId) {
-        const element = document.getElementById(elementId);
-        const oldChildNodes = element.childNodes;
-        oldChildNodes.forEach(childNode => element.removeChild(childNode));
+      const element = document.getElementById(elementId)
+      const oldChildNodes = element.childNodes
+      oldChildNodes.forEach((childNode) => element.removeChild(childNode))
     }
 
     function uploadFile() {
-        const client = new XMLHttpRequest();
-        client.open("PUT", "/data", true);
+      const client = new XMLHttpRequest()
+      client.open("PUT", "/data", true)
 
-        client.upload.addEventListener("progress", function(e) {
-            const percentComplete = Number(100 - (e.loaded / e.total * 100)).toFixed(0)
-            document.getElementById("uploadStatus").innerHTML = percentComplete + "%"
-        }, false);
+      client.upload.addEventListener(
+        "progress",
+        function (e) {
+          const percentComplete = Number(
+            100 - (e.loaded / e.total) * 100,
+          ).toFixed(0)
+          document.getElementById("uploadStatus").innerHTML =
+            percentComplete + "%"
+        },
+        false,
+      )
 
-        client.onload = () => {
-            if (client.status === 200) {
-                document.getElementById("uploadStatus").innerHTML = "{{uploadSucceeded}}"
-            } else {
-                document.getElementById("uploadStatus").innerHTML = "{{uploadFailed}}"
-            }
-            document.getElementById("uploadButton").disabled = true;
-        };
+      client.onload = () => {
+        if (client.status === 200) {
+          document.getElementById("uploadStatus").innerHTML =
+            "{{uploadSucceeded}}"
+        } else {
+          document.getElementById("uploadStatus").innerHTML = "{{uploadFailed}}"
+        }
+        document.getElementById("uploadButton").disabled = true
+      }
 
-        const formData = new FormData();
-        const file = document.getElementById("fileSelector").files[0];
-        formData.append(file.name, file);
-        client.setRequestHeader("Last-Modified", new Date(file.lastModified).toUTCString());
-        client.send(formData);
+      const formData = new FormData()
+      const file = document.getElementById("fileSelector").files[0]
+      formData.append(file.name, file)
+      client.setRequestHeader(
+        "Last-Modified",
+        new Date(file.lastModified).toUTCString(),
+      )
+      client.send(formData)
     }
 
     function inputFileSelected() {
-        // In chrome sometimes this event fires even if the user cancels file selection, so we need to check that there is a file
-        document.getElementById("uploadButton").disabled = !document.getElementById("fileSelector").value;
-        document.getElementById("uploadStatus").innerHTML = "";
+      // In chrome sometimes this event fires even if the user cancels file selection, so we need to check that there is a file
+      document.getElementById("uploadButton").disabled =
+        !document.getElementById("fileSelector").value
+      document.getElementById("uploadStatus").innerHTML = ""
     }
 
     function hideLightbox() {
-        document.getElementById('lightbox').style.display='none';
-        document.getElementById('lightbox').style.zIndex = '-999';
+      document.getElementById("lightbox").style.display = "none"
+      document.getElementById("lightbox").style.zIndex = "-999"
     }
-</script>
+  </script>
 
-<style>
+  <style>
     .lightbox {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, .8);
-        z-index: 1;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 1;
     }
 
     .lightbox_surround {
-        width: 100%;
-        height: 100%;
-        padding: 20px 0;
+      width: 100%;
+      height: 100%;
+      padding: 20px 0;
     }
 
     #lightbox_content {
-        margin: auto;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width:95%;
-        height:95%;
+      margin: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 95%;
+      height: 95%;
     }
-</style>
+  </style>
 
-<body>
+  <body>
+    <!-- LIGHTBOX CODE BEGIN -->
 
-<!-- LIGHTBOX CODE BEGIN -->
-
-<div id="lightbox" class="lightbox" style="display:none" onclick="hideLightbox()">
-    <div class="lightbox_surround">
-        <div id="lightbox_content">
-        </div>
+    <div
+      id="lightbox"
+      class="lightbox"
+      style="display: none"
+      onclick="hideLightbox()"
+    >
+      <div class="lightbox_surround">
+        <div id="lightbox_content"></div>
+      </div>
     </div>
-</div>
 
-<!-- LIGHTBOX CODE END -->
+    <!-- LIGHTBOX CODE END -->
 
-<div style="display: flex; flex-direction: column; padding: 5px">
-    <div style="display: flex; flex-direction: row">
+    <div style="display: flex; flex-direction: column; padding: 5px">
+      <div style="display: flex; flex-direction: row">
         <div style="flex: 2">
-            <div class="input-group">
-                <input id="fileSelector" type="file" class="form-control" onchange="inputFileSelected()" />
-                <button id="uploadButton" type="button" class="btn btn-primary btn-sm" onclick="uploadFile()" disabled>{{upload}}</button>
-            </div>
+          <div class="input-group">
+            <input
+              id="fileSelector"
+              type="file"
+              class="form-control"
+              onchange="inputFileSelected()"
+            />
+            <button
+              id="uploadButton"
+              type="button"
+              class="btn btn-primary btn-sm"
+              onclick="uploadFile()"
+              disabled
+            >
+              {{upload}}
+            </button>
+          </div>
         </div>
         <div style="flex: 1; align-self: center; margin-left: 3px">
-            <span id="uploadStatus"></span>
+          <span id="uploadStatus"></span>
         </div>
-    </div>
+      </div>
 
-    <div>
-        <input class="form-control-sm" id="searchText" onkeydown="if (event.keyCode === 13) loadMediaItemInfo()"/>
-        <button type="button" class="btn btn-primary btn-sm" onclick="loadMediaItemInfo()">{{search}}</button>
-    </div>
+      <div>
+        <input
+          class="form-control-sm"
+          id="searchText"
+          onkeydown="if (event.keyCode === 13) loadMediaItemInfo()"
+        />
+        <button
+          type="button"
+          class="btn btn-primary btn-sm"
+          onclick="loadMediaItemInfo()"
+        >
+          {{search}}
+        </button>
+      </div>
 
-    <div>
+      <div>
         <table id="mediaItemsTable" class="table table-striped"></table>
+      </div>
     </div>
-</div>
-
-</body>
+  </body>
 </html>
