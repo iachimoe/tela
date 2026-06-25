@@ -199,7 +199,7 @@ class DataStoreConnectionImpl(root: Path, user: String,
       handler.getMetadataList.asScala.toVector
     }.transformWith {
       case Success(filesMetadata) =>
-        log.info("Storing metadata for file with hash {}", hash)
+        log.info("Storing metadata for file with hash {} (number of files within: {})", hash, filesMetadata.size)
         createMetadataGraphForMultipleFiles(filesMetadata, originalFileName, hash)
       case Failure(e) =>
         log.error(s"Error storing metadata for file with hash $hash", e)
@@ -238,7 +238,7 @@ class DataStoreConnectionImpl(root: Path, user: String,
           val startTime = System.currentTimeMillis()
           connection.add(metadataGroupAsGraph)
           val endTime = System.currentTimeMillis()
-          log.info("Insertion into datastore took {} ms", endTime - startTime)
+          log.info("Insertion of {} triples into datastore took {} ms", metadataGroupAsGraph.size(), endTime - startTime)
         }
       }
     }

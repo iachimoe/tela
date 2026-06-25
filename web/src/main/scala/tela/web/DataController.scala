@@ -20,7 +20,8 @@ import scala.concurrent.{ExecutionContext, Future}
 class DataController @Inject()(
                                 userAction: UserAction,
                                 @Named("session-manager") sessionManager: ActorRef,
-                                controllerComponents: ControllerComponents)(implicit ec: ExecutionContext) extends AbstractController(controllerComponents) with Logging {
+                                controllerComponents: ControllerComponents,
+                                archiveCache: ArchiveFileSystemCache)(implicit ec: ExecutionContext) extends AbstractController(controllerComponents) with Logging {
   def publishData(uri: String): Action[JsValue] = userAction.apply(parse.tolerantJson) { implicit request =>
     logger.info(s"User ${request.sessionData.userData.username} publishing uri $uri")
     sessionManager ! PublishData(request.sessionData.sessionId, request.body.toString(), new URI(uri))
@@ -71,7 +72,7 @@ class DataController @Inject()(
       maybeFile <- (sessionManager ? RetrieveMediaItem(request.sessionData.sessionId, hash)).mapTo[Option[Path]]
       maybeChild <- maybeFile.map(file => getChildFromArchive(file, childPath)).getOrElse(Future.successful(None))
     } yield maybeChild.map {
-      case (path, fileSystems) => sendPathWithEmptyContentType(path, () => closeFileSystems(fileSystems))
+      case (path, keys) => sendPathWithEmptyContentType(path, () => releaseFileSystems(keys))
     }.getOrElse(NotFound)
   }
 
@@ -93,23 +94,21 @@ class DataController @Inject()(
   // Was originally going to do the file extraction in the data layer, but as the Path objects returned by
   // FileSystem objects contain a reference to the FileSystem, it seems unwise to be passing them around via Pekko,
   // especially if we want to run the data layer in a different JVM in the future, using, for example, Pekko cluster.
-  private def getChildFromArchive(archive: Path, childPath: String): Future[Option[(Path, Vector[FileSystem])]] = {
+  private def getChildFromArchive(archive: Path, childPath: String): Future[Option[(Path, Vector[CacheKey])]] = {
     if (childPath.isEmpty) Future.successful(None)
     else Future {
-      //TODO Conceivably this could be quite slow, e.g. for a big zip file on an NFS share
-      //Consider using different execution context?
-      recursivelyGetPathForChild(FileSystems.newFileSystem(archive), Paths.get(URLDecoder.decode(childPath, StandardCharsets.UTF_8)), None, Vector.empty)
+      val topKey = ArchiveKey(archive.toAbsolutePath.toString)
+      val topFs = archiveCache.acquire(topKey, () => FileSystems.newFileSystem(archive))
+      recursivelyGetPathForChild(topFs, topKey, Paths.get(URLDecoder.decode(childPath, StandardCharsets.UTF_8)), None, Vector.empty)
     } recover {
       case _: ProviderNotFoundException => None
     }
   }
 
   // This is particularly gnarly, but I don't see a way to simplify it at this moment
-  // It would be very nice to have a unit test (or tests) to ensure that the various filesystem objects get closed
-  // (both for cases where the file was not found, and where it was)
-  private def recursivelyGetPathForChild(fileSystem: FileSystem, childPath: Path, parent: Option[Path], oldFileSystems: Vector[FileSystem]): Option[(Path, Vector[FileSystem])] = {
+  private def recursivelyGetPathForChild(fileSystem: FileSystem, currentKey: CacheKey, childPath: Path, parent: Option[Path], acquiredKeys: Vector[CacheKey]): Option[(Path, Vector[CacheKey])] = {
     if (childPath.getNameCount == 1) {
-      getPathForChild(fileSystem, childPath, parent, oldFileSystems)
+      getPathForChild(fileSystem, currentKey, childPath, parent, acquiredKeys)
     } else {
       val firstPart = childPath.subpath(0, 1)
       val secondPart = childPath.subpath(1, 2)
@@ -118,36 +117,37 @@ class DataController @Inject()(
       val pathWithinFileSystem = fileSystem.getPath(firstPartWithParents.toString, secondPart.toString)
 
       if (Files.exists(pathWithinFileSystem)) {
-        recursivelyGetPathForChild(fileSystem, allPartsExceptFirst, Some(firstPartWithParents), oldFileSystems)
+        recursivelyGetPathForChild(fileSystem, currentKey, allPartsExceptFirst, Some(firstPartWithParents), acquiredKeys)
       } else {
         try {
-          val newfs = FileSystems.newFileSystem(fileSystem.getPath(firstPartWithParents.toString))
-          recursivelyGetPathForChild(newfs, allPartsExceptFirst, None, fileSystem +: oldFileSystems)
+          val nestedKey = NestedArchiveKey(currentKey, firstPartWithParents.toString)
+          val newFs = archiveCache.acquire(nestedKey, () => FileSystems.newFileSystem(fileSystem.getPath(firstPartWithParents.toString)))
+          recursivelyGetPathForChild(newFs, nestedKey, allPartsExceptFirst, None, currentKey +: acquiredKeys)
         } catch {
           case e: Throwable =>
             logger.info(s"Exception when attempting to download $childPath from $parent", e)
             // The most likely cases are FileSystemNotFoundException and ProviderNotFoundException
-            // but we want to close the filesystems we opened for any kind of exception
-            closeFileSystems(fileSystem +: oldFileSystems)
+            // but we want to release the filesystems we acquired for any kind of exception
+            releaseFileSystems(currentKey +: acquiredKeys)
             None
         }
       }
     }
   }
 
-  private def getPathForChild(fileSystem: FileSystem, childPath: Path, parent: Option[Path], oldFileSystems: Vector[FileSystem]) = {
+  private def getPathForChild(fileSystem: FileSystem, currentKey: CacheKey, childPath: Path, parent: Option[Path], acquiredKeys: Vector[CacheKey]) = {
     val absolutePath = parent.map(_.resolve(childPath)).getOrElse(childPath)
     val pathWithinFileSystem = fileSystem.getPath(absolutePath.toString)
     if (Files.exists(pathWithinFileSystem))
-      Some(pathWithinFileSystem, fileSystem +: oldFileSystems)
+      Some(pathWithinFileSystem, currentKey +: acquiredKeys)
     else {
-      closeFileSystems(fileSystem +: oldFileSystems)
+      releaseFileSystems(currentKey +: acquiredKeys)
       None
     }
   }
 
-  private def closeFileSystems(fileSystems: Vector[FileSystem]): Unit = {
-    fileSystems.foreach(_.close())
+  private def releaseFileSystems(keys: Vector[CacheKey]): Unit = {
+    keys.foreach(archiveCache.release)
   }
 
   def sparqlQuery(query: String): Action[AnyContent] = userAction.async { implicit request =>

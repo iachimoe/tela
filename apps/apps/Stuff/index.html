@@ -112,6 +112,7 @@
           audioPlayer.style.zIndex = "-1"
           span.removeChild(link)
           span.appendChild(audioPlayer)
+          audioPlayer.play()
         })
         return span
       }
@@ -418,7 +419,7 @@
           const fileLocation = parent.getValueOfJsonLdField(
             currentMediaItem,
             SCHEMA_ROOT + "identifier",
-          )
+          ).split('/').map(part => encodeURIComponent(part)).join('/')
           const name = parent.getValueOfJsonLdField(
             currentMediaItem,
             SCHEMA_ROOT + "name",
@@ -431,6 +432,7 @@
           let contentObject
           switch (encodingFormat) {
             case "audio/mp4":
+            case "audio/mpeg":
               contentObject = new AudioContent(
                 name,
                 alternateName,

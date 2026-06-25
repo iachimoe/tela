@@ -6,6 +6,7 @@ import org.apache.pekko.stream.Materializer
 import org.apache.pekko.testkit.TestActor.NoAutoPilot
 import org.scalatest.matchers.should.Matchers._
 import play.api.http._
+import play.api.inject.{DefaultApplicationLifecycle, guice}
 import play.api.inject.guice.GuiceApplicationBuilder
 import play.api.libs.Files.{SingletonTemporaryFileCreator, TemporaryFile}
 import play.api.libs.json.Json
@@ -26,7 +27,7 @@ class DataControllerSpec extends SessionManagerClientBaseSpec {
       implicit val bodyParser: BodyParsers.Default = app.injector.instanceOf[BodyParsers.Default]
       runTest(createTestEnvironment(
         (sessionManager, _) =>
-          new DataController(new UserAction(sessionManager), sessionManager, app.injector.instanceOf[ControllerComponents])), app.materializer)
+          new DataController(new UserAction(sessionManager), sessionManager, app.injector.instanceOf[ControllerComponents], new ArchiveFileSystemCache(new DefaultApplicationLifecycle()))), app.materializer)
     } finally {
       app.stop()
     }
